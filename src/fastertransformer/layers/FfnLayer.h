@@ -61,6 +61,7 @@ private:
 
 protected:
     T*    inter_buf_        = nullptr;
+    T*    weights_buf_        = nullptr;
     T*    inter_buf_2_      = nullptr;  // for gated activation
     T*    moe_gates_buf_    = nullptr;
     char* moe_fc_workspace_ = nullptr;

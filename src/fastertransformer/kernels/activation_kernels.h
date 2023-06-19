@@ -107,4 +107,8 @@ void invokeAddBiasTanh(T* out, const T* bias, const int m, const int n, cudaStre
 template<typename T>
 void invokeSigmoid(T* data, const int size, const float scale, cudaStream_t stream);
 
+
+template<typename T>
+void invokeAddBiasGelu(T* out, const T* bias, const int m, const int n, cudaStream_t stream);
+
 }  // namespace fastertransformer

@@ -197,55 +197,52 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
     else {
         if (int8_mode_ == 1) {
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
-            FT_CHECK(ffn_weights->intermediate_weight.int8_kernel != NULL
+            FT_CHECK(ffn_weights->intermediate_weight.int4_kernel != NULL
                      && ffn_weights->intermediate_weight.weight_only_quant_scale != NULL);
 
             if (ia3_tasks == nullptr && !use_gated_activation) {
-                // launch fused GEMM + activation
-                weight_only_int8_fc_runner_->gemm_bias_act(
-                    input_tensor,
-                    reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight.int8_kernel),
-                    ffn_weights->intermediate_weight.weight_only_quant_scale,
-                    ffn_weights->intermediate_weight.bias,
-                    inter_buf_,
-                    m,
-                    inter_size_,
-                    hidden_units_,
-                    activation_type,
-                    mixed_gemm_workspace_,
-                    mixed_gemm_ws_bytes_,
-                    stream_);
+              invokeInt4WeightExtractionNoTrans(ffn_weights->intermediate_weight.int4_kernel,
+                                                ffn_weights->intermediate_weight.weight_only_quant_scale,
+                                                weights_buf_,
+                                                inter_size_,
+                                                hidden_units_,
+                                                stream_);
+
+              cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                    CUBLAS_OP_N,
+                                    inter_size_,
+                                    m,
+                                    hidden_units_,
+                                    weights_buf_,
+                                    inter_size_,
+                                    input_tensor,
+                                    hidden_units_,
+                                    inter_buf_,
+                                    inter_size_);
+
+              invokeAddBiasGelu<T>(inter_buf_, ffn_weights->intermediate_weight.bias, m, inter_size_, stream_);
+
             }
             else {
-                // Otherwise, let FT handle activation
-                weight_only_int8_fc_runner_->gemm(
-                    input_tensor,
-                    reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight.int8_kernel),
-                    ffn_weights->intermediate_weight.weight_only_quant_scale,
-                    inter_buf_,
-                    m,
-                    inter_size_,
-                    hidden_units_,
-                    mixed_gemm_workspace_,
-                    mixed_gemm_ws_bytes_,
-                    stream_);
+              invokeInt4WeightExtractionNoTrans(ffn_weights->intermediate_weight.int4_kernel,
+                                                ffn_weights->intermediate_weight.weight_only_quant_scale,
+                                                weights_buf_,
+                                                inter_size_,
+                                                hidden_units_,
+                                                stream_);
 
-                if (use_gated_activation) {
-                    FT_CHECK(ffn_weights->intermediate_weight2.int8_kernel != NULL
-                             && ffn_weights->intermediate_weight2.weight_only_quant_scale != NULL);
+              cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                    CUBLAS_OP_N,
+                                    inter_size_,
+                                    m,
+                                    hidden_units_,
+                                    weights_buf_,
+                                    inter_size_,
+                                    input_tensor,
+                                    hidden_units_,
+                                    inter_buf_,
+                                    inter_size_);
 
-                    weight_only_int8_fc_runner_->gemm(
-                        input_tensor,
-                        reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight2.int8_kernel),
-                        ffn_weights->intermediate_weight2.weight_only_quant_scale,
-                        inter_buf_2_,
-                        m,
-                        inter_size_,
-                        hidden_units_,
-                        mixed_gemm_workspace_,
-                        mixed_gemm_ws_bytes_,
-                        stream_);
-                }
             }
         }
         else if (int8_mode_ == 2) {
@@ -329,18 +326,29 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
     else {
         if (int8_mode_ == 1) {
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
-            FT_CHECK(ffn_weights->output_weight.int8_kernel != NULL
+            FT_CHECK(ffn_weights->output_weight.int4_kernel != NULL
                      && ffn_weights->output_weight.weight_only_quant_scale != NULL);
-            weight_only_int8_fc_runner_->gemm(inter_buf_,
-                                              reinterpret_cast<const uint8_t*>(ffn_weights->output_weight.int8_kernel),
+
+            invokeInt4WeightExtractionNoTrans(ffn_weights->output_weight.int4_kernel,
                                               ffn_weights->output_weight.weight_only_quant_scale,
-                                              output_tensor,
-                                              m,
+                                              weights_buf_,
                                               hidden_units_,
                                               inter_size_,
-                                              mixed_gemm_workspace_,
-                                              mixed_gemm_ws_bytes_,
                                               stream_);
+
+
+            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  hidden_units_,
+                                  m,
+                                  inter_size_,
+                                  weights_buf_,
+                                  hidden_units_,
+                                  inter_buf_,
+                                  inter_size_,
+                                  output_tensor,
+                                  hidden_units_);
+
         }
         else if (int8_mode_ == 2) {
             int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(inter_buf_),
@@ -497,6 +505,7 @@ void FfnLayer<T>::allocateBuffer(size_t token_num, int moe_k, bool use_moe)
             int8_gemm_ws_bytes_  = int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
             int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
         }
+        weights_buf_ = (T*)allocator_->reMalloc(weights_buf_, sizeof(T) * hidden_units_ * inter_size_, false);
     }
 
     is_allocate_buffer_ = true;
@@ -508,6 +517,7 @@ void FfnLayer<T>::freeBuffer()
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     if (is_allocate_buffer_) {
         allocator_->free((void**)(&inter_buf_));
+        allocator_->free((void**)(&weights_buf_));
         if (use_gated_activation_) {
             allocator_->free((void**)(&inter_buf_2_));
         }
