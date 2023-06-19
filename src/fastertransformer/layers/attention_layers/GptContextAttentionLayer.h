@@ -57,7 +57,6 @@ private:
     bool is_qk_buf_float_;
 
     std::shared_ptr<CutlassFpAIntBGemmRunner<T, uint8_t>> weight_only_int8_fc_runner_;
-      std::shared_ptr<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>> weight_only_int4_fc_runner_;
     std::shared_ptr<CutlassInt8GemmRunner<T>>             int8_fc_runner_;
 
 protected:
@@ -75,8 +74,6 @@ protected:
     T*     qkv_buf_3_            = nullptr;
     char*  mixed_gemm_workspace_ = nullptr;
     size_t mixed_gemm_ws_bytes_  = 0;
-    char*  mixed_gemm_workspace2_ = nullptr;
-    size_t mixed_gemm_ws_bytes2_  = 0;
     char*  int8_gemm_workspace_  = nullptr;
     size_t int8_gemm_ws_bytes_   = 0;
 

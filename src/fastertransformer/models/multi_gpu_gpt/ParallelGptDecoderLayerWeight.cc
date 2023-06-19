@@ -206,13 +206,10 @@ void ParallelGptDecoderLayerWeight<T>::copyFrom(const ParallelGptDecoderLayerWei
     }
     else {
         if (int8_mode_ == 1) {
-        // cudaD2Dcpy(weights_ptr[2], other.weights_ptr[2], hidden_units_ * 3 * hidden_units_ / tensor_para_size_);
-          cudaD2Dcpy(
-                int8_weights_ptr[0], other.int8_weights_ptr[0], hidden_units_ * 3 * hidden_units_ / tensor_para_size_);
           cudaD2Dcpy(
                 int4_weights_ptr[0], other.int4_weights_ptr[0], hidden_units_ * 3 * hidden_units_ / tensor_para_size_ / 2);
             cudaD2Dcpy(
-                int8_weights_ptr[1], other.int8_weights_ptr[1], hidden_units_ / tensor_para_size_ * hidden_units_);
+                int4_weights_ptr[1], other.int4_weights_ptr[1], hidden_units_ / tensor_para_size_ * hidden_units_);
             cudaD2Dcpy(int8_weights_ptr[2], other.int8_weights_ptr[2], hidden_units_ * inter_size_ / tensor_para_size_);
             cudaD2Dcpy(int8_weights_ptr[3], other.int8_weights_ptr[3], inter_size_ / tensor_para_size_ * hidden_units_);
 
@@ -396,27 +393,14 @@ void ParallelGptDecoderLayerWeight<T>::loadModel(std::string dir_path, FtCudaDat
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
                                                      QuantType::PACKED_INT4_WEIGHT_ONLY);
-        // loadWeightFromBin<T>(weights_ptr[2],
-        //                      {hidden_units_, 3 * hidden_units_ / tensor_para_size_},
-        //                      dir_path + ".attention.query_key_value.weight." + std::to_string(tensor_para_rank_)
-        //                          + ".bin",
-        //                      model_file_type);
 
-        // loadWeightFromBinAndQuantizeForWeightOnly<T>(int8_weights_ptr[0],
-        //                                              weight_only_scale_ptr[0],
-        //                                              {hidden_units_, 3 * hidden_units_ / tensor_para_size_},
-        //                                              dir_path + ".attention.query_key_value.weight."
-        //                                                  + std::to_string(tensor_para_rank_) + ".bin",
-        //                                              model_file_type,
-        //                                              QuantType::INT8_WEIGHT_ONLY2);
-
-        loadWeightFromBinAndQuantizeForWeightOnly<T>(int8_weights_ptr[1],
+        loadWeightFromBinAndQuantizeForWeightOnly<T>(int4_weights_ptr[1],
                                                      weight_only_scale_ptr[1],
                                                      {hidden_units_ / tensor_para_size_, hidden_units_},
                                                      dir_path + ".attention.dense.weight."
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
-                                                     QuantType::INT8_WEIGHT_ONLY);
+                                                     QuantType::PACKED_INT4_WEIGHT_ONLY);
 
         loadWeightFromBinAndQuantizeForWeightOnly<T>(int8_weights_ptr[2],
                                                      weight_only_scale_ptr[2],
@@ -533,9 +517,8 @@ void ParallelGptDecoderLayerWeight<T>::setWeightPtr()
 
     if (int8_mode_ != 0) {
         if (int8_mode_ == 1) {
-            self_attention_weights.query_weight.int8_kernel                 = int8_weights_ptr[0];
             self_attention_weights.query_weight.int4_kernel                 = int4_weights_ptr[0];
-            self_attention_weights.attention_output_weight.int8_kernel      = int8_weights_ptr[1];
+            self_attention_weights.attention_output_weight.int4_kernel      = int4_weights_ptr[1];
             ffn_weights.intermediate_weight.int8_kernel                     = int8_weights_ptr[2];
             ffn_weights.output_weight.int8_kernel                           = int8_weights_ptr[3];
             after_attention_adapter_weights.intermediate_weight.int8_kernel = int8_weights_ptr[4];
@@ -608,11 +591,8 @@ void ParallelGptDecoderLayerWeight<T>::mallocWeights()
     }
     else {
         if (int8_mode_ == 1) {
-            // deviceMalloc(&weights_ptr[2], hidden_units_ * 3 * hidden_units_ / tensor_para_size_);  // qkv weight
-            // // Alloc FFN and Attention int8 weights
-            deviceMalloc(&int8_weights_ptr[0], hidden_units_ * 3 * hidden_units_ / tensor_para_size_);
             deviceMalloc(&int4_weights_ptr[0], hidden_units_ * 3 * hidden_units_ / tensor_para_size_ / 2);
-            deviceMalloc(&int8_weights_ptr[1], hidden_units_ / tensor_para_size_ * hidden_units_);
+            deviceMalloc(&int4_weights_ptr[1], hidden_units_ / tensor_para_size_ * hidden_units_ / 2);
             deviceMalloc(&int8_weights_ptr[2], hidden_units_ * inter_size_ / tensor_para_size_);
             deviceMalloc(&int8_weights_ptr[3], inter_size_ / tensor_para_size_ * hidden_units_);
 

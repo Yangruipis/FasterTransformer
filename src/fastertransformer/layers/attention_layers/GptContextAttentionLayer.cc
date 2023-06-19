@@ -101,44 +101,6 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
         FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                  && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
-        // weight_only_int8_fc_runner_->gemm(attention_input,
-        //                                   reinterpret_cast<const uint8_t*>(attention_weights->query_weight.int8_kernel),
-        //                                   attention_weights->query_weight.weight_only_quant_scale,
-        //                                   qkv_buf_,
-        //                                   m,
-        //                                   3 * local_hidden_units_,
-        //                                   hidden_units_,
-        //                                   mixed_gemm_workspace_,
-        //                                   mixed_gemm_ws_bytes_,
-        //                                   stream_);
-
-            // cublas_wrapper_->Gemm(CUBLAS_OP_N,
-            //                       CUBLAS_OP_N,
-            //                       3 * local_hidden_units_,  // n
-            //                       m,
-            //                       hidden_units_,  // k
-            //                       attention_weights->query_weight.kernel,
-            //                       3 * local_hidden_units_,  // n
-            //                       attention_input,
-            //                       hidden_units_,  // k
-            //                       qkv_buf_,
-            //                       3 * local_hidden_units_ /* n */);
-            // int8WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int8_kernel,
-            //                                               attention_input,
-            //                                               attention_weights->query_weight.weight_only_quant_scale,
-            //                                               qkv_buf_,
-            //                                               m,
-            //                                               3 * local_hidden_units_,
-            //                                               hidden_units_,
-            //                                               stream_);
-
-            // invokeInt8WeightExtractionNoTrans(attention_weights->query_weight.int8_kernel,
-            //                                   attention_weights->query_weight.weight_only_quant_scale,
-            //                                   weights_buf_,
-            //                                   3 * local_hidden_units_,
-            //                                   hidden_units_,
-            //                                   stream_);
-
         invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
                                           attention_weights->query_weight.weight_only_quant_scale,
                                           weights_buf_,
@@ -394,20 +356,51 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
         else {
             if (int8_mode_ == 1) {
                 FT_CHECK(weight_only_int8_fc_runner_.get() != NULL
-                         && attention_weights->attention_output_weight.int8_kernel != NULL
+                         && attention_weights->attention_output_weight.int4_kernel != NULL
                          && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
-                weight_only_int8_fc_runner_->gemm(
-                    qkv_buf_3_,
-                    reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
-                    attention_weights->attention_output_weight.weight_only_quant_scale,
-                    attention_out,
-                    m,
-                    hidden_units_,
-                    local_hidden_units_,
-                    mixed_gemm_workspace_,
-                    mixed_gemm_ws_bytes_,
-                    stream_);
+                invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
+                                                  attention_weights->attention_output_weight.weight_only_quant_scale,
+                                                  weights_buf_,
+                                                  hidden_units_,
+                                                  local_hidden_units_,
+                                                  stream_);
+                sync_check_cuda_error();
+                cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                      CUBLAS_OP_N,
+                                      hidden_units_,
+                                      m,
+                                      local_hidden_units_,
+                                      weights_buf_,
+                                      hidden_units_,
+                                      qkv_buf_3_,
+                                      local_hidden_units_,
+                                      attention_out,
+                                      hidden_units_);
+
+                // cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                //                       CUBLAS_OP_N,
+                //                       local_hidden_units_,  // n
+                //                       m,
+                //                       hidden_units_,  // k
+                //                       weights_buf_,
+                //                       local_hidden_units_,  // n
+                //                       attention_out,
+                //                       hidden_units_,  // k
+                //                       qkv_buf_,
+                //                       local_hidden_units_ /* n */);
+
+                // weight_only_int8_fc_runner_->gemm(
+                //     qkv_buf_3_,
+                //     reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
+                //     attention_weights->attention_output_weight.weight_only_quant_scale,
+                //     attention_out,
+                //     m,
+                //     hidden_units_,
+                //     local_hidden_units_,
+                //     mixed_gemm_workspace_,
+                //     mixed_gemm_ws_bytes_,
+                //     stream_);
             }
             else if (int8_mode_ == 2) {
                 int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(qkv_buf_3_),
@@ -471,8 +464,6 @@ GptContextAttentionLayer<T>::GptContextAttentionLayer(size_t           max_batch
     neox_rotary_style_(false),
     is_qk_buf_float_(is_qk_buf_float || int8_mode == 2),
     weight_only_int8_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, uint8_t>>() : nullptr),
-    weight_only_int4_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>>() :
-                                                 nullptr),
     int8_fc_runner_(int8_mode == 2 ? std::make_shared<CutlassInt8GemmRunner<T>>() : nullptr),
     int8_mode_(int8_mode)
 {
@@ -503,8 +494,6 @@ GptContextAttentionLayer<T>::GptContextAttentionLayer(size_t           max_batch
     neox_rotary_style_(false),
     is_qk_buf_float_(is_qk_buf_float || int8_mode == 2),
     weight_only_int8_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, uint8_t>>() : nullptr),
-    weight_only_int4_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>>() :
-                                                 nullptr),
     int8_fc_runner_(int8_mode == 2 ? std::make_shared<CutlassInt8GemmRunner<T>>() : nullptr),
     int8_mode_(int8_mode)
 {
@@ -539,8 +528,6 @@ GptContextAttentionLayer<T>::GptContextAttentionLayer(size_t           max_batch
     neox_rotary_style_(neox_rotary_style),
     is_qk_buf_float_(is_qk_buf_float),
     weight_only_int8_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, uint8_t>>() : nullptr),
-    weight_only_int4_fc_runner_(int8_mode == 1 ? std::make_shared<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>>() :
-                                                 nullptr),
     int8_fc_runner_(int8_mode == 2 ? std::make_shared<CutlassInt8GemmRunner<T>>() : nullptr),
     int8_mode_(int8_mode)
 {
@@ -566,7 +553,6 @@ GptContextAttentionLayer<T>::GptContextAttentionLayer(GptContextAttentionLayer<T
     neox_rotary_style_(attention_layer.neox_rotary_style_),
     is_qk_buf_float_(attention_layer.is_qk_buf_float_),
     weight_only_int8_fc_runner_(attention_layer.weight_only_int8_fc_runner_),
-    weight_only_int4_fc_runner_(attention_layer.weight_only_int4_fc_runner_),
     int8_fc_runner_(attention_layer.int8_fc_runner_),
     int8_mode_(attention_layer.int8_mode_)
 {
@@ -624,8 +610,6 @@ void GptContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
         mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
         mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
 
-        mixed_gemm_ws_bytes2_  = weight_only_int4_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
-        mixed_gemm_workspace2_ = (char*)allocator_->reMalloc(mixed_gemm_workspace2_, mixed_gemm_ws_bytes2_, false);
     }
     else if (int8_mode_ == 2) {
         const int max_size   = std::max(hidden_units_, 3 * local_hidden_units_);

@@ -211,8 +211,6 @@ void DecoderSelfAttentionLayer<T>::allocateBuffer(size_t batch_size)
         mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
         mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
 
-        mixed_gemm_ws_bytes2_  = weight_only_int4_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
-        mixed_gemm_workspace2_ = (char*)allocator_->reMalloc(mixed_gemm_workspace2_, mixed_gemm_ws_bytes2_, false);
     }
     else if (int8_mode_ == 2) {
         const int max_size   = std::max(d_model_, 3 * local_hidden_units_);
@@ -238,10 +236,6 @@ void DecoderSelfAttentionLayer<T>::freeBuffer()
             mixed_gemm_ws_bytes_ = 0;
         }
 
-        if (mixed_gemm_workspace2_) {
-            allocator_->free((void**)(&mixed_gemm_workspace2_));
-            mixed_gemm_ws_bytes2_ = 0;
-        }
     }
 }
 
@@ -293,7 +287,6 @@ DecoderSelfAttentionLayer<T>::DecoderSelfAttentionLayer(size_t           max_bat
     if (int8_mode_ == 1) {
         FT_CHECK_WITH_INFO(!(std::is_same<T, float>::value), "Weight only quant not supported for fp32.");
         weight_only_int8_fc_runner_ = std::make_shared<CutlassFpAIntBGemmRunner<T, uint8_t>>();
-        weight_only_int4_fc_runner_ = std::make_shared<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>>();
     }
 }
 
@@ -544,60 +537,12 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
             FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                      && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
-            // weight_only_int8_fc_runner_->gemm(
-            //     attention_input,
-            //     reinterpret_cast<const uint8_t*>(attention_weights->query_weight.int8_kernel),
-            //     attention_weights->query_weight.weight_only_quant_scale,
-            //     qkv_buf_,
-            //     batch_size,
-            //     3 * local_hidden_units_,
-            //     d_model_,
-            //     mixed_gemm_workspace_,
-            //     mixed_gemm_ws_bytes_,
-            //     stream_);
-
-            // int8WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int8_kernel,
-            //                                               attention_input,
-            //                                               attention_weights->query_weight.weight_only_quant_scale,
-            //                                               qkv_buf_,
-            //                                               batch_size,
-            //                                               3 * local_hidden_units_,
-            //                                               d_model_,
-            //                                               stream_);
-
             invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
                                               attention_weights->query_weight.weight_only_quant_scale,
                                               weights_buf_,
                                               3 * local_hidden_units_,
                                               d_model_,
                                               stream_);
-
-            // for (int i = 0; i < 3 * local_hidden_units_ * d_model_; i++) {
-            //   weights_buf_[i] = attention_weights->query_weight.int8_kernel[i] *
-            //   attention_weights->query_weight.weight_only_quant_scale[i % (3 * local_hidden_units_)];
-            // }
-
-            // invokeInt8WeightExtractionNoTrans(attention_weights->query_weight.int8_kernel,
-            //                       attention_weights->query_weight.weight_only_quant_scale,
-            //                       weights_buf_,
-            //                       3 * local_hidden_units_,
-            //                       d_model_,
-            //                       stream_);
-
-            // printf("======\n");
-            // for (int i = 0; i < 10; ++i) {
-            //   printf("a=%5f, b=%5f, diff=%5f\n", )
-            // }
-
-            // int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int8_kernel,
-            //                                               attention_input,
-            //                                               attention_weights->query_weight.weight_only_quant_scale,
-            //                                               qkv_buf_,
-            //                                               batch_size,
-            //                                               3 * local_hidden_units_,
-            //                                               d_model_,
-            //                                               stream_);
-
 
             cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                   CUBLAS_OP_N,
@@ -611,17 +556,6 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
                                   qkv_buf_,
                                   3 * local_hidden_units_ /* n */);
 
-            // cublas_wrapper_->Gemm(CUBLAS_OP_N,
-            //                       CUBLAS_OP_N,
-            //                       3 * local_hidden_units_,  // n
-            //                       batch_size,
-            //                       d_model_,  // k
-            //                       attention_weights->query_weight.kernel,
-            //                       3 * local_hidden_units_,  // n
-            //                       attention_input,
-            //                       d_model_,  // k
-            //                       qkv_buf_,
-            //                       3 * local_hidden_units_ /* n */);
         }
         else if (int8_mode_ == 2) {
             // Here, we set per_column_scaling to be true because q, k, v may
@@ -712,20 +646,38 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
     else {
         if (int8_mode_ == 1) {
             FT_CHECK(weight_only_int8_fc_runner_.get() != NULL
-                     && attention_weights->attention_output_weight.int8_kernel != NULL
+                     && attention_weights->attention_output_weight.int4_kernel != NULL
                      && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
-            weight_only_int8_fc_runner_->gemm(
-                context_buf_,
-                reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
-                attention_weights->attention_output_weight.weight_only_quant_scale,
-                attention_out,
-                batch_size,
-                d_model_,
-                local_hidden_units_,
-                mixed_gemm_workspace_,
-                mixed_gemm_ws_bytes_,
-                stream_);
+            invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
+                                              attention_weights->attention_output_weight.weight_only_quant_scale,
+                                              weights_buf_,
+                                              d_model_,
+                                              local_hidden_units_,
+                                              stream_);
+
+            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  d_model_,  // n
+                                  batch_size,
+                                  local_hidden_units_,  // k
+                                  weights_buf_,
+                                  d_model_,  // n
+                                  context_buf_,
+                                  local_hidden_units_,  // k
+                                  attention_out,
+                                  d_model_ /* n */);
+            // weight_only_int8_fc_runner_->gemm(
+            //     context_buf_,
+            //     reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
+            //     attention_weights->attention_output_weight.weight_only_quant_scale,
+            //     attention_out,
+            //     batch_size,
+            //     d_model_,
+            //     local_hidden_units_,
+            //     mixed_gemm_workspace_,
+            //     mixed_gemm_ws_bytes_,
+            //     stream_);
         }
         else if (int8_mode_ == 2) {
             int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(context_buf_),
