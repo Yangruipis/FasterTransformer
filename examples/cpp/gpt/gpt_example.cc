@@ -257,7 +257,7 @@ void gpt_example(const INIReader reader)
     struct cudaDeviceProp prop;
     check_cuda_error(cudaGetDeviceProperties(&prop, 0));
 
-    ParallelGptWeight<T> gpt_weights(hidden_units, inter_size, vocab_size, decoder_layers, max_seq_len, 1, 0, 1, 0, 0);
+    ParallelGptWeight<T> gpt_weights(hidden_units, inter_size, vocab_size, decoder_layers, max_seq_len, 1, 0, 1, 0, 1);
 
     gpt_weights.loadModel(model_dir);
 
@@ -314,7 +314,7 @@ void gpt_example(const INIReader reader)
                                         &prop,
                                         attention_type,
                                         sparse,
-                                        0,
+                                        1,
                                         nullptr,
                                         0,
                                         shared_contexts_ratio);
@@ -447,7 +447,7 @@ void gpt_example(const INIReader reader)
                     if (hBuf[i] == int(0)) {
                         zeroCount++;
                     }
-                    outFile << hBuf[i] << " ";
+                    outFile << hBuf[i] << ", ";
                     if ((i + 1) % (total_output_len) == 0) {
                         outFile << std::endl;
                     }

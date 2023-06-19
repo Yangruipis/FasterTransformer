@@ -399,6 +399,7 @@ void ParallelGptDecoder<T>::forward(std::unordered_map<std::string, Tensor>*    
         // the adapter after attention
         PUSH_RANGE("post mha layernorm");
         if (has_adapters_) {
+                  printf("has adapter");
             invokeGenericActivation<IdentityActivation, T, T>(
                 self_attn_output_,
                 layer_weight->self_attention_weights.attention_output_weight.bias,
@@ -497,7 +498,6 @@ void ParallelGptDecoder<T>::forward(std::unordered_map<std::string, Tensor>*    
                 "expert_for_source_row",
                 Tensor{MEMORY_GPU, TYPE_INT32, {local_batch_size, moe_k_}, expert_for_source_row_});
         }
-
         ffn_layer_->resetInterSize(inter_size_ / tensor_para_.world_size_);
         ffn_layer_->forward(&ffn_output_tensors, &ffn_input_tensors, &layer_weight->ffn_weights);
 

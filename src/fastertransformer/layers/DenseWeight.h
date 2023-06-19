@@ -33,6 +33,7 @@ struct DenseWeight {
     const T1* sp_kernel = nullptr;
     // for int8 kernel
     const int8_t* int8_kernel             = nullptr;
+    const int8_t* int4_kernel             = nullptr;
     const float*  scale                   = nullptr;
     const T2*     weight_only_quant_scale = nullptr;
     const T2*     moe_scale               = nullptr;

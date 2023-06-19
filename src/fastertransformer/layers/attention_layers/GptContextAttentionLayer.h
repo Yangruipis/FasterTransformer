@@ -17,10 +17,12 @@
 
 #pragma once
 
+#include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
 #include "3rdparty/trt_fused_multihead_attention/qkvToContext.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/int8_gemm/int8_gemm.h"
 #include "src/fastertransformer/layers/attention_layers/BaseAttentionLayer.h"
+#include "cutlass/numeric_types.h"
 
 namespace fastertransformer {
 
@@ -55,12 +57,14 @@ private:
     bool is_qk_buf_float_;
 
     std::shared_ptr<CutlassFpAIntBGemmRunner<T, uint8_t>> weight_only_int8_fc_runner_;
+      std::shared_ptr<CutlassFpAIntBGemmRunner<T, cutlass::uint4b_t>> weight_only_int4_fc_runner_;
     std::shared_ptr<CutlassInt8GemmRunner<T>>             int8_fc_runner_;
 
 protected:
     using BaseAttentionLayer<T>::allocator_;
     using BaseAttentionLayer<T>::stream_;
     using BaseAttentionLayer<T>::sparse_;
+    T* weights_buf_ = nullptr;
     T*     qkv_buf_              = nullptr;
     T*     q_buf_2_              = nullptr;
     T*     k_buf_2_              = nullptr;
@@ -71,6 +75,8 @@ protected:
     T*     qkv_buf_3_            = nullptr;
     char*  mixed_gemm_workspace_ = nullptr;
     size_t mixed_gemm_ws_bytes_  = 0;
+    char*  mixed_gemm_workspace2_ = nullptr;
+    size_t mixed_gemm_ws_bytes2_  = 0;
     char*  int8_gemm_workspace_  = nullptr;
     size_t int8_gemm_ws_bytes_   = 0;
 

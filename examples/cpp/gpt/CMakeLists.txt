@@ -13,4 +13,6 @@
 # limitations under the License.
 
 add_executable(gpt_example gpt_example.cc)
-target_link_libraries(gpt_example PUBLIC -lcublas -lcublasLt -lcudart ParallelGpt nvtx_utils)
+add_executable(quant_example quant.cc)
+target_link_libraries(gpt_example PUBLIC -lcublas -lcublasLt -lcudart ParallelGpt nvtx_utils cutlass_preprocessors)
+target_link_libraries(quant_example PUBLIC -lcublas -lcublasLt -lcudart ParallelGpt nvtx_utils cutlass_preprocessors)

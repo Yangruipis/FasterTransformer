@@ -189,10 +189,12 @@ template void invokeCudaCast(half* dst, __nv_bfloat16 const* const src, const si
 #endif
 #ifdef ENABLE_FP8
 template void invokeCudaCast(float* dst, __nv_fp8_e4m3 const* const src, const size_t size, cudaStream_t stream);
-template void invokeCudaCast(__nv_bfloat16* dst, __nv_fp8_e4m3 const* const src, const size_t size, cudaStream_t stream);
+template void
+invokeCudaCast(__nv_bfloat16* dst, __nv_fp8_e4m3 const* const src, const size_t size, cudaStream_t stream);
 template void invokeCudaCast(half* dst, __nv_fp8_e4m3 const* const src, const size_t size, cudaStream_t stream);
 template void invokeCudaCast(__nv_fp8_e4m3* dst, float const* const src, const size_t size, cudaStream_t stream);
-template void invokeCudaCast(__nv_fp8_e4m3* dst, __nv_bfloat16 const* const src, const size_t size, cudaStream_t stream);
+template void
+invokeCudaCast(__nv_fp8_e4m3* dst, __nv_bfloat16 const* const src, const size_t size, cudaStream_t stream);
 template void invokeCudaCast(__nv_fp8_e4m3* dst, half const* const src, const size_t size, cudaStream_t stream);
 #endif
 
@@ -439,10 +441,8 @@ template int
 loadWeightFromBin(int* ptr, std::vector<size_t> shape, std::string filename, FtCudaDataType model_file_type);
 
 template<typename T, typename T_IN>
-int loadWeightFromBinAndQuantizeForWeightOnlyFunc(int8_t*             ptr,
-                                                  T*                  scales_ptr,
-                                                  std::vector<size_t> shape,
-                                                  std::string         filename)
+int loadWeightFromBinAndQuantizeForWeightOnlyFunc(
+    int8_t* ptr, T* scales_ptr, std::vector<size_t> shape, std::string filename, QuantType quant_type)
 {
     FT_LOG_INFO(std::string("Loading and quantizing weight from file: ") + filename);
     FT_CHECK_WITH_INFO(shape.size() == 2, "We can only use this function to dequantize a weight matrix.");
@@ -454,16 +454,81 @@ int loadWeightFromBinAndQuantizeForWeightOnlyFunc(int8_t*             ptr,
 
     const size_t        num_elts = shape[0] * shape[1];
     std::vector<int8_t> host_quantized_weight_buf(num_elts);
+    std::vector<int8_t> host_quantized_weight_int4_buf(num_elts / 2);
     std::vector<T>      host_scales_buf(shape[1]);
 
     // Note: This function preprocesses the weights to a special format for weight only quant!
-    symmetric_quantize<T, T_IN>(host_quantized_weight_buf.data(),
-                                host_scales_buf.data(),
-                                host_array.data(),
-                                shape,
-                                QuantType::INT8_WEIGHT_ONLY);
 
-    cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_buf.data(), host_quantized_weight_buf.size());
+    if (quant_type == QuantType::INT8_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY2) {
+        symmetric_quantize<T, T_IN>(
+            host_quantized_weight_buf.data(), host_scales_buf.data(), host_array.data(), shape, quant_type);
+        cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_buf.data(), host_quantized_weight_buf.size());
+    }
+    else {
+        symmetric_quantize<T, T_IN>(
+            host_quantized_weight_int4_buf.data(), host_scales_buf.data(), host_array.data(), shape, quant_type);
+        cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_int4_buf.data(), host_quantized_weight_int4_buf.size());
+
+        // std::vector<int8_t> host_quantized_weight_int4_buf(num_elts / 2);
+        // const T_IN*         current_weight           = host_array.data();
+        // int8_t*             current_quantized_weight = host_quantized_weight_int4_buf.data();
+        // const float         quant_range_scale        = 1.f / float(1 << (4 - 1));
+
+        // const size_t num_rows = shape.size() == 2 ? shape[0] : shape[1];
+        // const size_t num_cols = shape.size() == 2 ? shape[1] : shape[2];
+
+        // const int bytes_per_out_col = num_cols / 2;
+
+        // std::vector<float> per_col_max(num_cols);
+        // for (int jj = 0; jj < num_cols; ++jj) {
+        //     per_col_max[jj] = 0.f;
+        // }
+        // for (int ii = 0; ii < num_rows; ++ii) {
+        //     const T_IN* current_weight_row = current_weight + ii * num_cols;
+        //     for (int jj = 0; jj < num_cols; ++jj) {
+        //         per_col_max[jj] = std::max(per_col_max[jj], std::abs(float(current_weight_row[jj])));
+        //     }
+        // }
+
+        // for (int jj = 0; jj < num_cols; ++jj) {
+        //     per_col_max[jj] *= quant_range_scale;
+        //     host_scales_buf[jj] = T(per_col_max[jj]);
+        // }
+
+        // for (int ii = 0; ii < num_rows; ++ii) {
+        //     int8_t*     current_quantized_weight_row = current_quantized_weight + ii * bytes_per_out_col;
+        //     const T_IN* current_weight_row           = current_weight + ii * num_cols;
+        //     for (int jj = 0; jj < bytes_per_out_col; ++jj) {
+
+        //         // We will pack two int4 elements per iteration of the inner loop.
+        //         int8_t packed_int4s = 0;
+        //         for (int packed_idx = 0; packed_idx < 2; ++packed_idx) {
+        //             const int input_idx = 2 * jj + packed_idx;
+        //             if (input_idx < num_cols) {
+        //                 const float  col_scale      = per_col_max[input_idx];
+        //                 const float  weight_elt     = float(current_weight_row[input_idx]);
+        //                 const float  scaled_weight  = round(weight_elt / col_scale);
+        //                 int          int_weight     = int(scaled_weight);
+        //                 const int8_t clipped_weight = std::max(-8, std::min(7, int_weight));
+
+        //                 // Kill the sign extension bits (hence 0x0F mask) then shift to upper bits
+        //                 // if packing the second int4 and or the bits into the final result.
+        //                 // if (packed_idx == 0) {
+        //                 //   packed_int4s = clipped_weight << 4;
+        //                 // } else {
+        //                 //   packed_int4s = packed_int4s | (clipped_weight & 0b00001111);
+        //                 // }
+        //                 packed_int4s |= ((clipped_weight & 0x0F) << (4 * packed_idx));
+        //             }
+        //         }
+        //         current_quantized_weight_row[jj] = packed_int4s;
+        //         // printf("i=%d, v=%d\n", jj, packed_int4s);
+        //     }
+        // }
+
+        // cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_int4_buf.data(), host_quantized_weight_int4_buf.size());
+    }
+
     cudaH2Dcpy(scales_ptr, (T*)host_scales_buf.data(), host_scales_buf.size());
 
     return 0;
@@ -474,19 +539,22 @@ int loadWeightFromBinAndQuantizeForWeightOnly(int8_t*             quantized_weig
                                               T*                  scale_ptr,
                                               std::vector<size_t> shape,
                                               std::string         filename,
-                                              FtCudaDataType      model_file_type)
+                                              FtCudaDataType      model_file_type,
+                                              QuantType           quant_type)
 {
     switch (model_file_type) {
         case FtCudaDataType::FP32:
-            loadWeightFromBinAndQuantizeForWeightOnlyFunc<T, float>(quantized_weight_ptr, scale_ptr, shape, filename);
+            loadWeightFromBinAndQuantizeForWeightOnlyFunc<T, float>(
+                quantized_weight_ptr, scale_ptr, shape, filename, quant_type);
             break;
         case FtCudaDataType::FP16:
-            loadWeightFromBinAndQuantizeForWeightOnlyFunc<T, half>(quantized_weight_ptr, scale_ptr, shape, filename);
+            loadWeightFromBinAndQuantizeForWeightOnlyFunc<T, half>(
+                quantized_weight_ptr, scale_ptr, shape, filename, quant_type);
             break;
 #ifdef ENABLE_BF16
         case FtCudaDataType::BF16:
             loadWeightFromBinAndQuantizeForWeightOnlyFunc<T, __nv_bfloat16>(
-                quantized_weight_ptr, scale_ptr, shape, filename);
+                quantized_weight_ptr, scale_ptr, shape, filename, quant_type);
             break;
 #endif
         default:
@@ -501,19 +569,20 @@ int loadWeightFromBinAndQuantizeForWeightOnly(int8_t*             quantized_weig
                                               float*              scale_ptr,
                                               std::vector<size_t> shape,
                                               std::string         filename,
-                                              FtCudaDataType      model_file_type)
+                                              FtCudaDataType      model_file_type,
+                                              QuantType           quant_type)
 {
     FT_CHECK_WITH_INFO(false, "Weight only quant not supported with FP32 compute.");
     return 0;
 }
 
-template int
-loadWeightFromBinAndQuantizeForWeightOnly(int8_t*, float*, std::vector<size_t>, std::string, FtCudaDataType);
-template int
-loadWeightFromBinAndQuantizeForWeightOnly(int8_t*, half*, std::vector<size_t>, std::string, FtCudaDataType);
+template int loadWeightFromBinAndQuantizeForWeightOnly(
+    int8_t*, float*, std::vector<size_t>, std::string, FtCudaDataType, QuantType quant_type);
+template int loadWeightFromBinAndQuantizeForWeightOnly(
+    int8_t*, half*, std::vector<size_t>, std::string, FtCudaDataType, QuantType quant_type);
 #ifdef ENABLE_BF16
-template int
-loadWeightFromBinAndQuantizeForWeightOnly(int8_t*, __nv_bfloat16*, std::vector<size_t>, std::string, FtCudaDataType);
+template int loadWeightFromBinAndQuantizeForWeightOnly(
+    int8_t*, __nv_bfloat16*, std::vector<size_t>, std::string, FtCudaDataType, QuantType quant_type);
 #endif
 
 template<typename T_IN, typename T_OUT>
