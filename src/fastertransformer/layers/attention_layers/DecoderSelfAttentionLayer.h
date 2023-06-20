@@ -55,7 +55,7 @@ private:
 protected:
     T*     qkv_buf_              = nullptr;
     T*     context_buf_          = nullptr;
-    T* weights_buf_ = nullptr;
+    // T* weights_buf_ = nullptr;
     char*  mixed_gemm_workspace_ = nullptr;
     size_t mixed_gemm_ws_bytes_  = 0;
     char*  int8_gemm_workspace_  = nullptr;

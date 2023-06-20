@@ -26,7 +26,8 @@ namespace fastertransformer {
 enum class QuantType {
     INT8_WEIGHT_ONLY,
     INT8_WEIGHT_ONLY2,
-    PACKED_INT4_WEIGHT_ONLY
+    PACKED_INT4_WEIGHT_ONLY,
+    PACKED_INT4_WEIGHT_ONLY2
 };
 int get_bits_in_quant_type(QuantType quant_type);
 

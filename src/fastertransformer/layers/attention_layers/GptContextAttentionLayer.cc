@@ -101,24 +101,15 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
         FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                  && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
-        invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
-                                          attention_weights->query_weight.weight_only_quant_scale,
-                                          weights_buf_,
-                                          3 * local_hidden_units_,
-                                          hidden_units_,
-                                          stream_);
+        int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
+                                                      attention_input,
+                                                      attention_weights->query_weight.weight_only_quant_scale,
+                                                      qkv_buf_,
+                                                      m,
+                                                      3 * local_hidden_units_,
+                                                      hidden_units_,
+                                                      stream_);
 
-        cublas_wrapper_->Gemm(CUBLAS_OP_N,
-                              CUBLAS_OP_N,
-                              3 * local_hidden_units_,  // n
-                              m,
-                              hidden_units_,  // k
-                              weights_buf_,
-                              3 * local_hidden_units_,  // n
-                              attention_input,
-                              hidden_units_,  // k
-                              qkv_buf_,
-                              3 * local_hidden_units_ /* n */);
     }
     else if (int8_mode_ == 2) {
         cublas_wrapper_->Int8Gemm(3 * local_hidden_units_,
@@ -359,24 +350,35 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
                          && attention_weights->attention_output_weight.int4_kernel != NULL
                          && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
-                invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
-                                                  attention_weights->attention_output_weight.weight_only_quant_scale,
-                                                  weights_buf_,
-                                                  hidden_units_,
-                                                  local_hidden_units_,
-                                                  stream_);
-                sync_check_cuda_error();
-                cublas_wrapper_->Gemm(CUBLAS_OP_N,
-                                      CUBLAS_OP_N,
-                                      hidden_units_,
-                                      m,
-                                      local_hidden_units_,
-                                      weights_buf_,
-                                      hidden_units_,
-                                      qkv_buf_3_,
-                                      local_hidden_units_,
-                                      attention_out,
-                                      hidden_units_);
+                // invokeInt4WeightExtractionNoTrans2(attention_weights->attention_output_weight.int4_kernel,
+                //                                   attention_weights->attention_output_weight.weight_only_quant_scale,
+                //                                   weights_buf_,
+                //                                   hidden_units_,
+                //                                   local_hidden_units_,
+                //                                   stream_);
+                // sync_check_cuda_error();
+                // cublas_wrapper_->Gemm(CUBLAS_OP_T,
+                //                       CUBLAS_OP_N,
+                //                       hidden_units_,
+                //                       m,
+                //                       local_hidden_units_,
+                //                       weights_buf_,
+                //                       // hidden_units_,
+                //                       local_hidden_units_,
+                //                       qkv_buf_3_,
+                //                       local_hidden_units_,
+                //                       attention_out,
+                //                       hidden_units_);
+
+
+            int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->attention_output_weight.int4_kernel,
+                                                          qkv_buf_3_,
+                                                          attention_weights->attention_output_weight.weight_only_quant_scale,
+                                                          attention_out,
+                                                          m,
+                                                          hidden_units_,
+                                                          local_hidden_units_,
+                                                          stream_);
 
                 // cublas_wrapper_->Gemm(CUBLAS_OP_N,
                 //                       CUBLAS_OP_N,
@@ -617,7 +619,7 @@ void GptContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
         int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
     }
 
-    weights_buf_ = reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * hidden_units_ * 3 * local_hidden_units_, false));
+    // weights_buf_ = reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * hidden_units_ * 3 * local_hidden_units_, false));
 
     is_allocate_buffer_ = true;
 }
@@ -630,7 +632,7 @@ void GptContextAttentionLayer<T>::freeBuffer()
         allocator_->free((void**)(&qkv_buf_));
         allocator_->free((void**)(&q_buf_2_));
         allocator_->free((void**)(&qk_buf_));
-        allocator_->free((void**)(&weights_buf_));
+        // allocator_->free((void**)(&weights_buf_));
         allocator_->free((void**)(&qkv_buf_2_));
         allocator_->free((void**)(&qkv_buf_3_));
 

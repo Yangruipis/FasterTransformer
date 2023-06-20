@@ -81,6 +81,9 @@ __global__ void int8WeightPerChannelLdkMultiplication(
         }
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
+          // int weight_idx = b_offset + i * k_4 + k_idx;
+          // int weight_i = weight_idx / (k_4*4);
+          // int weight_j = weight_idx % (k_4*4);
             const char4 weight_val = weight[b_offset + i * k_4 + k_idx];
 #pragma unroll
             for (int m_i = 0; m_i < m; m_i++) {
@@ -285,7 +288,7 @@ template void int8WeightPerChannelLdkMultiplicationLauncher(const int8_t*       
 // grid(n/nPerThread)
 template<int m, int nPerThread>
 __global__ void int4WeightPerChannelLdkMultiplication(
-    const char2* weight, const half4* input, const half* scale_list, void* output, const int k_4)
+                                                      const char2* weight, const half4* input, const half* scale_list, void* output, const int k_4, const int n)
 {
     const int    tidx     = threadIdx.x;
     const int    bidx     = blockIdx.x;
@@ -315,6 +318,10 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         }
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
+            // int weight_idx = b_offset + i * k_4 + k_idx;
+            // int weight_i = weight_idx / (n / 2);
+            // int weight_j = weight_idx % (n / 2);
+            // const char2 weight_val = weight[weight_j * (k_4*4) + weight_i];
             const char2 weight_val = weight[b_offset + i * k_4 + k_idx];
             int8_t      original, high1, high2, low1, low2;
             original = weight_val.x;
@@ -332,10 +339,15 @@ __global__ void int4WeightPerChannelLdkMultiplication(
                 // const half2 weight_val_2 =
                 //     __hadd2(__hmul2(input_val_0[m_i], weight_val_0), __hmul2(input_val_1[m_i], weight_val_1));
                 // sum_list[m_i].data[i] += static_cast<float>(weight_val_2.x + weight_val_2.y);
-                sum_list[m_i].data[i] += ((static_cast<float>(high1) * static_cast<float>(input_val[m_i].x))
-                                          + (static_cast<float>(low1) * static_cast<float>(input_val[m_i].y))
-                                          + (static_cast<float>(high2) * static_cast<float>(input_val[m_i].z))
-                                          + (static_cast<float>(low2) * static_cast<float>(input_val[m_i].w)));
+                // sum_list[m_i].data[i] += ((static_cast<float>(high1) * static_cast<float>(input_val[m_i].x))
+                //                           + (static_cast<float>(low1) * static_cast<float>(input_val[m_i].y))
+                //                           + (static_cast<float>(high2) * static_cast<float>(input_val[m_i].z))
+                //                           + (static_cast<float>(low2) * static_cast<float>(input_val[m_i].w)));
+
+                sum_list[m_i].data[i] += ((static_cast<float>(low1) * static_cast<float>(input_val[m_i].x))
+                                          + (static_cast<float>(high1) * static_cast<float>(input_val[m_i].y))
+                                          + (static_cast<float>(low2) * static_cast<float>(input_val[m_i].z))
+                                          + (static_cast<float>(high2) * static_cast<float>(input_val[m_i].w)));
             }
         }
     }
@@ -363,7 +375,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
 
 #define RUN4(M, TYPE, TYPE1)                                                                                           \
     int4WeightPerChannelLdkMultiplication<M, nPerThread><<<grid, block, shm_size, stream>>>(                           \
-        (const char2*)weight, (const TYPE*)input, (const TYPE1*)scale_list, (void*)output, k / 4);
+                                                                                            (const char2*)weight, (const TYPE*)input, (const TYPE1*)scale_list, (void*)output, k / 4, n);
 
 #define EXPAND_RUN4(N)                                                                                                 \
     if (m == N) {                                                                                                      \
@@ -411,7 +423,7 @@ void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
     const size_t shm_size = block.x * nPerThread * sizeof(float);
     EXPAND_RUN4(1)
     else EXPAND_RUN4(2) else EXPAND_RUN4(3) else EXPAND_RUN4(4) else EXPAND_RUN4(5) else EXPAND_RUN4(
-        6) else EXPAND_RUN4(7) else EXPAND_RUN4(8) else
+        6) else EXPAND_RUN4(7) else EXPAND_RUN4(8) else EXPAND_RUN4(14) else
     {
         printf("[ERROR][int4WeightPerChannelLdkMultiplicationLauncher] not support m == %d.\n", m);
         exit(-1);
@@ -497,8 +509,6 @@ int4WeightExtractionNoTransDevice(const int8_t* weight, const T* scale_list, T* 
         int8_t high     = original >> 4;
         int8_t low      = original << 4;
         low             = low >> 4;
-        // output[i * 2]     = T(high) * scale_list[(i*2) % (2*k)];
-        // output[i * 2 + 1] = T(low) * scale_list[(i*2+1) % (2*k)];
         output[i * 2]     = T(low) * scale_list[(i * 2) % n];
         output[i * 2 + 1] = T(high) * scale_list[(i * 2+1) % n];
         // output[i * 2]     = T(low) * scale_list[blockIdx.x];
@@ -530,6 +540,46 @@ template void invokeInt4WeightExtractionNoTrans(const int8_t*        weight,
                                                 const int            k,
                                                 cudaStream_t         stream);
 #endif
+
+template<typename T>
+__global__ void
+int4WeightExtractionNoTrans2Device(const int8_t* weight, const T* scale_list, T* output, const int n, const int k)
+{
+    for (int i = blockIdx.x * k + threadIdx.x; i < blockIdx.x * k + k; i += blockDim.x) {
+        int8_t original = weight[i];
+        int8_t high     = original >> 4;
+        int8_t low      = original << 4;
+        low             = low >> 4;
+        output[i * 2]     = T(low) * scale_list[blockIdx.x];
+        output[i * 2 + 1] = T(high) * scale_list[blockIdx.x];
+    }
+}
+
+template<typename T>
+void invokeInt4WeightExtractionNoTrans2(
+    const int8_t* weight, const T* scale_list, T* output, const int n, const int k, cudaStream_t stream)
+{
+    dim3 grid(n);
+    dim3 block(1024);
+
+    int4WeightExtractionNoTrans2Device<T><<<grid, block, 0, stream>>>(weight, scale_list, output, n, k / 2);
+}
+
+template void invokeInt4WeightExtractionNoTrans2(
+    const int8_t* weight, const float* scale_list, float* output, const int n, const int k, cudaStream_t stream);
+
+template void invokeInt4WeightExtractionNoTrans2(
+    const int8_t* weight, const half* scale_list, half* output, const int n, const int k, cudaStream_t stream);
+
+#ifdef ENABLE_BF16
+template void invokeInt4WeightExtractionNoTrans2(const int8_t*        weight,
+                                                const __nv_bfloat16* scale_list,
+                                                __nv_bfloat16*       output,
+                                                const int            n,
+                                                const int            k,
+                                                cudaStream_t         stream);
+#endif
+
 
 // super super slow
 template<typename T>

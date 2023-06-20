@@ -63,7 +63,7 @@ protected:
     using BaseAttentionLayer<T>::allocator_;
     using BaseAttentionLayer<T>::stream_;
     using BaseAttentionLayer<T>::sparse_;
-    T* weights_buf_ = nullptr;
+    // T* weights_buf_ = nullptr;
     T*     qkv_buf_              = nullptr;
     T*     q_buf_2_              = nullptr;
     T*     k_buf_2_              = nullptr;

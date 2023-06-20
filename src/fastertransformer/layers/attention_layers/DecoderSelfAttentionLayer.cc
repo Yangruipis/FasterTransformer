@@ -217,7 +217,7 @@ void DecoderSelfAttentionLayer<T>::allocateBuffer(size_t batch_size)
         int8_gemm_ws_bytes_  = int8_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
         int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
     }
-    weights_buf_ = reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * d_model_ * 3 * local_hidden_units_, false));
+    // weights_buf_ = reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * d_model_ * 3 * local_hidden_units_, false));
 
     is_allocate_buffer_ = true;
 }
@@ -227,7 +227,7 @@ void DecoderSelfAttentionLayer<T>::freeBuffer()
 {
     if (is_allocate_buffer_) {
         allocator_->free((void**)(&qkv_buf_));
-        allocator_->free((void**)(&weights_buf_));
+        // allocator_->free((void**)(&weights_buf_));
         allocator_->free((void**)(&context_buf_));
         is_allocate_buffer_ = false;
 
@@ -537,24 +537,34 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
             FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                      && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
-            invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
-                                              attention_weights->query_weight.weight_only_quant_scale,
-                                              weights_buf_,
-                                              3 * local_hidden_units_,
-                                              d_model_,
-                                              stream_);
+            // invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
+            //                                   attention_weights->query_weight.weight_only_quant_scale,
+            //                                   weights_buf_,
+            //                                   3 * local_hidden_units_,
+            //                                   d_model_,
+            //                                   stream_);
 
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
-                                  CUBLAS_OP_N,
-                                  3 * local_hidden_units_,  // n
-                                  batch_size,
-                                  d_model_,  // k
-                                  weights_buf_,
-                                  3 * local_hidden_units_,  // n
-                                  attention_input,
-                                  d_model_,  // k
-                                  qkv_buf_,
-                                  3 * local_hidden_units_ /* n */);
+            // cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            //                       CUBLAS_OP_N,
+            //                       3 * local_hidden_units_,  // n
+            //                       batch_size,
+            //                       d_model_,  // k
+            //                       weights_buf_,
+            //                       3 * local_hidden_units_,  // n
+            //                       attention_input,
+            //                       d_model_,  // k
+            //                       qkv_buf_,
+            //                       3 * local_hidden_units_ /* n */);
+
+            int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
+                                                          attention_input,
+                                                          attention_weights->query_weight.weight_only_quant_scale,
+                                                          qkv_buf_,
+                                                          batch_size,
+                                                          3 * local_hidden_units_,
+                                                          d_model_,
+                                                          stream_);
+
 
         }
         else if (int8_mode_ == 2) {
@@ -649,24 +659,34 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
                      && attention_weights->attention_output_weight.int4_kernel != NULL
                      && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
-            invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
-                                              attention_weights->attention_output_weight.weight_only_quant_scale,
-                                              weights_buf_,
-                                              d_model_,
-                                              local_hidden_units_,
-                                              stream_);
+            // invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
+            //                                   attention_weights->attention_output_weight.weight_only_quant_scale,
+            //                                   weights_buf_,
+            //                                   d_model_,
+            //                                   local_hidden_units_,
+            //                                   stream_);
 
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
-                                  CUBLAS_OP_N,
-                                  d_model_,  // n
-                                  batch_size,
-                                  local_hidden_units_,  // k
-                                  weights_buf_,
-                                  d_model_,  // n
-                                  context_buf_,
-                                  local_hidden_units_,  // k
-                                  attention_out,
-                                  d_model_ /* n */);
+            // cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            //                       CUBLAS_OP_N,
+            //                       d_model_,  // n
+            //                       batch_size,
+            //                       local_hidden_units_,  // k
+            //                       weights_buf_,
+            //                       d_model_,  // n
+            //                       context_buf_,
+            //                       local_hidden_units_,  // k
+            //                       attention_out,
+            //                       d_model_ /* n */);
+
+            int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->attention_output_weight.int4_kernel,
+                                                          context_buf_,
+                                                          attention_weights->attention_output_weight.weight_only_quant_scale,
+                                                          attention_out,
+                                                          batch_size,
+                                                          d_model_,
+                                                          local_hidden_units_,
+                                                          stream_);
+
             // weight_only_int8_fc_runner_->gemm(
             //     context_buf_,
             //     reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),

@@ -392,7 +392,7 @@ void ParallelGptDecoderLayerWeight<T>::loadModel(std::string dir_path, FtCudaDat
                                                      dir_path + ".attention.query_key_value.weight."
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
-                                                     QuantType::PACKED_INT4_WEIGHT_ONLY);
+                                                     QuantType::PACKED_INT4_WEIGHT_ONLY2);
 
         loadWeightFromBinAndQuantizeForWeightOnly<T>(int4_weights_ptr[1],
                                                      weight_only_scale_ptr[1],
@@ -400,7 +400,7 @@ void ParallelGptDecoderLayerWeight<T>::loadModel(std::string dir_path, FtCudaDat
                                                      dir_path + ".attention.dense.weight."
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
-                                                     QuantType::PACKED_INT4_WEIGHT_ONLY);
+                                                     QuantType::PACKED_INT4_WEIGHT_ONLY2);
 
         loadWeightFromBinAndQuantizeForWeightOnly<T>(int4_weights_ptr[2],
                                                      weight_only_scale_ptr[2],
@@ -408,7 +408,7 @@ void ParallelGptDecoderLayerWeight<T>::loadModel(std::string dir_path, FtCudaDat
                                                      dir_path + ".mlp.dense_h_to_4h.weight."
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
-                                                     QuantType::PACKED_INT4_WEIGHT_ONLY);
+                                                     QuantType::PACKED_INT4_WEIGHT_ONLY2);
 
         loadWeightFromBinAndQuantizeForWeightOnly<T>(int4_weights_ptr[3],
                                                      weight_only_scale_ptr[3],
@@ -416,7 +416,7 @@ void ParallelGptDecoderLayerWeight<T>::loadModel(std::string dir_path, FtCudaDat
                                                      dir_path + ".mlp.dense_4h_to_h.weight."
                                                          + std::to_string(tensor_para_rank_) + ".bin",
                                                      model_file_type,
-                                                     QuantType::PACKED_INT4_WEIGHT_ONLY);
+                                                     QuantType::PACKED_INT4_WEIGHT_ONLY2);
 
         // Load adapter weights if required.
         if (gpt_variant_params_.has_adapters) {
