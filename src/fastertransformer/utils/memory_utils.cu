@@ -468,65 +468,6 @@ int loadWeightFromBinAndQuantizeForWeightOnlyFunc(
         symmetric_quantize<T, T_IN>(
             host_quantized_weight_int4_buf.data(), host_scales_buf.data(), host_array.data(), shape, quant_type);
         cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_int4_buf.data(), host_quantized_weight_int4_buf.size());
-
-        // std::vector<int8_t> host_quantized_weight_int4_buf(num_elts / 2);
-        // const T_IN*         current_weight           = host_array.data();
-        // int8_t*             current_quantized_weight = host_quantized_weight_int4_buf.data();
-        // const float         quant_range_scale        = 1.f / float(1 << (4 - 1));
-
-        // const size_t num_rows = shape.size() == 2 ? shape[0] : shape[1];
-        // const size_t num_cols = shape.size() == 2 ? shape[1] : shape[2];
-
-        // const int bytes_per_out_col = num_cols / 2;
-
-        // std::vector<float> per_col_max(num_cols);
-        // for (int jj = 0; jj < num_cols; ++jj) {
-        //     per_col_max[jj] = 0.f;
-        // }
-        // for (int ii = 0; ii < num_rows; ++ii) {
-        //     const T_IN* current_weight_row = current_weight + ii * num_cols;
-        //     for (int jj = 0; jj < num_cols; ++jj) {
-        //         per_col_max[jj] = std::max(per_col_max[jj], std::abs(float(current_weight_row[jj])));
-        //     }
-        // }
-
-        // for (int jj = 0; jj < num_cols; ++jj) {
-        //     per_col_max[jj] *= quant_range_scale;
-        //     host_scales_buf[jj] = T(per_col_max[jj]);
-        // }
-
-        // for (int ii = 0; ii < num_rows; ++ii) {
-        //     int8_t*     current_quantized_weight_row = current_quantized_weight + ii * bytes_per_out_col;
-        //     const T_IN* current_weight_row           = current_weight + ii * num_cols;
-        //     for (int jj = 0; jj < bytes_per_out_col; ++jj) {
-
-        //         // We will pack two int4 elements per iteration of the inner loop.
-        //         int8_t packed_int4s = 0;
-        //         for (int packed_idx = 0; packed_idx < 2; ++packed_idx) {
-        //             const int input_idx = 2 * jj + packed_idx;
-        //             if (input_idx < num_cols) {
-        //                 const float  col_scale      = per_col_max[input_idx];
-        //                 const float  weight_elt     = float(current_weight_row[input_idx]);
-        //                 const float  scaled_weight  = round(weight_elt / col_scale);
-        //                 int          int_weight     = int(scaled_weight);
-        //                 const int8_t clipped_weight = std::max(-8, std::min(7, int_weight));
-
-        //                 // Kill the sign extension bits (hence 0x0F mask) then shift to upper bits
-        //                 // if packing the second int4 and or the bits into the final result.
-        //                 // if (packed_idx == 0) {
-        //                 //   packed_int4s = clipped_weight << 4;
-        //                 // } else {
-        //                 //   packed_int4s = packed_int4s | (clipped_weight & 0b00001111);
-        //                 // }
-        //                 packed_int4s |= ((clipped_weight & 0x0F) << (4 * packed_idx));
-        //             }
-        //         }
-        //         current_quantized_weight_row[jj] = packed_int4s;
-        //         // printf("i=%d, v=%d\n", jj, packed_int4s);
-        //     }
-        // }
-
-        // cudaH2Dcpy(ptr, (int8_t*)host_quantized_weight_int4_buf.data(), host_quantized_weight_int4_buf.size());
     }
 
     cudaH2Dcpy(scales_ptr, (T*)host_scales_buf.data(), host_scales_buf.size());
