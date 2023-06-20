@@ -531,9 +531,9 @@ void FfnLayer<T>::allocateBuffer(size_t token_num, int moe_k, bool use_moe)
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
             // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
             // possible memory that would be required by any of the individual gemms.
-            const int max_size    = std::max(hidden_units_, inter_size_);
-            mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
-            mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
+            // const int max_size    = std::max(hidden_units_, inter_size_);
+            // mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
+            // mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
         }
         else if (int8_mode_ == 2) {
             const int max_size   = std::max(hidden_units_, inter_size_);
@@ -561,10 +561,10 @@ void FfnLayer<T>::freeBuffer()
             allocator_->free((void**)(&moe_fc_workspace_));
         }
 
-        if (mixed_gemm_workspace_) {
-            allocator_->free((void**)(&mixed_gemm_workspace_));
-            mixed_gemm_ws_bytes_ = 0;
-        }
+        // if (mixed_gemm_workspace_) {
+        //     allocator_->free((void**)(&mixed_gemm_workspace_));
+        //     mixed_gemm_ws_bytes_ = 0;
+        // }
 
         is_allocate_buffer_ = false;
     }

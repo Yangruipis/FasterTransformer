@@ -101,6 +101,26 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
         FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                  && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
+            // invokeInt4WeightExtractionNoTrans2(attention_weights->query_weight.int4_kernel,
+            //                                   attention_weights->query_weight.weight_only_quant_scale,
+            //                                   weights_buf_,
+            //                                   3 * local_hidden_units_,
+            //                                   hidden_units_,
+            //                                   stream_);
+
+            // cublas_wrapper_->Gemm(CUBLAS_OP_T,
+            //                       CUBLAS_OP_N,
+            //                       3 * local_hidden_units_,  // n
+            //                       m,
+            //                       hidden_units_,  // k
+            //                       weights_buf_,
+            //                       // 3 * local_hidden_units_,  // n
+            //                       hidden_units_,
+            //                       attention_input,
+            //                       hidden_units_,  // k
+            //                       qkv_buf_,
+            //                       3 * local_hidden_units_ /* n */);
+
         int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
                                                       attention_input,
                                                       attention_weights->query_weight.weight_only_quant_scale,
@@ -608,9 +628,9 @@ void GptContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
     if (int8_mode_ == 1) {
         // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
         // possible memory that would be required by any of the individual gemms.
-        const int max_size    = std::max(hidden_units_, 3 * local_hidden_units_);
-        mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
-        mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
+        // const int max_size    = std::max(hidden_units_, 3 * local_hidden_units_);
+        // mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
+        // mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
 
     }
     else if (int8_mode_ == 2) {
@@ -640,11 +660,11 @@ void GptContextAttentionLayer<T>::freeBuffer()
             allocator_->free((void**)(&qk_buf_float_));
         }
 
-        allocator_->free((void**)(&mixed_gemm_workspace_));
-        mixed_gemm_ws_bytes_ = 0;
+        // allocator_->free((void**)(&mixed_gemm_workspace_));
+        // mixed_gemm_ws_bytes_ = 0;
 
-        allocator_->free((void**)(&int8_gemm_workspace_));
-        int8_gemm_ws_bytes_ = 0;
+        // allocator_->free((void**)(&int8_gemm_workspace_));
+        // int8_gemm_ws_bytes_ = 0;
 
         is_allocate_buffer_ = false;
     }

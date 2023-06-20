@@ -472,6 +472,8 @@ int loadWeightFromBinAndQuantizeForWeightOnlyFunc(
     else {
 
          std::vector<T_IN> host_array_trans(num_elts);
+
+#pragma omp parallel
          for (int i = 0; i < shape[0]; i++) {
            for (int j = 0; j < shape[1]; j++) {
              host_array_trans[j * shape[0] + i] = host_array[i * shape[1] + j];
@@ -503,6 +505,7 @@ int loadWeightFromBinAndQuantizeForWeightOnlyFunc(
             host_scales_buf[jj] = T(per_col_max[jj]);
         }
 
+#pragma omp parallel
         for (int ii = 0; ii < num_rows; ++ii) {
             int8_t*     current_quantized_weight_row = current_quantized_weight + ii * bytes_per_out_col;
             const T_IN* current_weight_row           = current_weight + ii * num_cols;

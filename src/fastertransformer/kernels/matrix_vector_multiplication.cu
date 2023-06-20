@@ -288,7 +288,7 @@ template void int8WeightPerChannelLdkMultiplicationLauncher(const int8_t*       
 // grid(n/nPerThread)
 template<int m, int nPerThread>
 __global__ void int4WeightPerChannelLdkMultiplication(
-                                                      const char2* weight, const half4* input, const half* scale_list, void* output, const int k_4, const int n)
+                                                      const char2* weight, const half4* input, const half* scale_list, void* output, const int k_4, const int n, const int m_s)
 {
     const int    tidx     = threadIdx.x;
     const int    bidx     = blockIdx.x;
@@ -298,7 +298,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
     using array = struct ARRAY<nPerThread, float>;
     array sum_list[m];
 #pragma unroll
-    for (int m_i = 0; m_i < m; m_i++) {
+    for (int m_i = m_s; m_i < m+m_s; m_i++) {
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
             sum_list[m_i].data[i] = 0.0f;
@@ -310,7 +310,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         // half2 input_val_1[m];
         half4 input_val[m];
 #pragma unroll
-        for (int m_i = 0; m_i < m; m_i++) {
+        for (int m_i = m_s; m_i < m+m_s; m_i++) {
             // const half4 input_val = input[k_idx + m_i * k_4];
             // input_val_0[m_i] = {input_val.x, input_val.y};
             // input_val_1[m_i] = {input_val.z, input_val.w};
@@ -335,7 +335,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
             low2     = low2 >> 4;
             // const half2 weight_val_1 = {static_cast<half>(high), static_cast<half>(low)};
 #pragma unroll
-            for (int m_i = 0; m_i < m; m_i++) {
+            for (int m_i = m_s; m_i < m+m_s; m_i++) {
                 // const half2 weight_val_2 =
                 //     __hadd2(__hmul2(input_val_0[m_i], weight_val_0), __hmul2(input_val_1[m_i], weight_val_1));
                 // sum_list[m_i].data[i] += static_cast<float>(weight_val_2.x + weight_val_2.y);
@@ -352,7 +352,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         }
     }
 #pragma unroll
-    for (int m_i = 0; m_i < m; m_i++) {
+    for (int m_i = m_s; m_i < m+m_s; m_i++) {
         cgBlockReduceSumElements<nPerThread>(sum_list[m_i].data, cgBlockReduceSumElements_shm);
         __syncthreads();
     }
@@ -360,7 +360,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         using array_half       = struct ARRAY<nPerThread, half>;
         const array_half scale = *((const array_half*)scale_list + bidx);
 #pragma unroll
-        for (int m_i = 0; m_i < m; m_i++) {
+        for (int m_i = m_s; m_i < m+m_s; m_i++) {
             array_half sum_list_half;
 #pragma unroll
             for (int i = 0; i < nPerThread; i++) {
@@ -375,7 +375,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
 
 #define RUN4(M, TYPE, TYPE1)                                                                                           \
     int4WeightPerChannelLdkMultiplication<M, nPerThread><<<grid, block, shm_size, stream>>>(                           \
-                                                                                            (const char2*)weight, (const TYPE*)input, (const TYPE1*)scale_list, (void*)output, k / 4, n);
+                                                                                            (const char2*)weight, (const TYPE*)input, (const TYPE1*)scale_list, (void*)output, k / 4, n, m_s);
 
 #define EXPAND_RUN4(N)                                                                                                 \
     if (m == N) {                                                                                                      \
@@ -421,12 +421,19 @@ void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
     }
     block.x               = (block.x + 31) / 32 * 32;
     const size_t shm_size = block.x * nPerThread * sizeof(float);
+    int m_s = 0;
+
     EXPAND_RUN4(1)
     else EXPAND_RUN4(2) else EXPAND_RUN4(3) else EXPAND_RUN4(4) else EXPAND_RUN4(5) else EXPAND_RUN4(
-        6) else EXPAND_RUN4(7) else EXPAND_RUN4(8) else EXPAND_RUN4(14) else
+        6) else EXPAND_RUN4(7) else EXPAND_RUN4(8) else
     {
-        printf("[ERROR][int4WeightPerChannelLdkMultiplicationLauncher] not support m == %d.\n", m);
-        exit(-1);
+      while (m_s < m){
+        RUN4(8, half4, half);
+        m_s += m;
+      }
+
+        // printf("[ERROR][int4WeightPerChannelLdkMultiplicationLauncher] not support m == %d.\n", m);
+        // exit(-1);
     }
 }
 

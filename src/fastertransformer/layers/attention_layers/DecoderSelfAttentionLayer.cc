@@ -207,9 +207,9 @@ void DecoderSelfAttentionLayer<T>::allocateBuffer(size_t batch_size)
     if (int8_mode_ == 1) {
         // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
         // possible memory that would be required by any of the individual gemms.
-        const int max_size    = std::max(d_model_, 3 * local_hidden_units_);
-        mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
-        mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
+        // const int max_size    = std::max(d_model_, 3 * local_hidden_units_);
+        // mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size, max_size, max_size);
+        // mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
 
     }
     else if (int8_mode_ == 2) {
@@ -231,10 +231,10 @@ void DecoderSelfAttentionLayer<T>::freeBuffer()
         allocator_->free((void**)(&context_buf_));
         is_allocate_buffer_ = false;
 
-        if (mixed_gemm_workspace_) {
-            allocator_->free((void**)(&mixed_gemm_workspace_));
-            mixed_gemm_ws_bytes_ = 0;
-        }
+        // if (mixed_gemm_workspace_) {
+        //     allocator_->free((void**)(&mixed_gemm_workspace_));
+        //     mixed_gemm_ws_bytes_ = 0;
+        // }
 
     }
 }
