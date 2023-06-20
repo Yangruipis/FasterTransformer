@@ -298,7 +298,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
     using array = struct ARRAY<nPerThread, float>;
     array sum_list[m];
 #pragma unroll
-    for (int m_i = m_s; m_i < m+m_s; m_i++) {
+    for (int m_i = 0; m_i < m; m_i++) {
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
             sum_list[m_i].data[i] = 0.0f;
@@ -310,11 +310,11 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         // half2 input_val_1[m];
         half4 input_val[m];
 #pragma unroll
-        for (int m_i = m_s; m_i < m+m_s; m_i++) {
+        for (int m_i = 0; m_i < m; m_i++) {
             // const half4 input_val = input[k_idx + m_i * k_4];
             // input_val_0[m_i] = {input_val.x, input_val.y};
             // input_val_1[m_i] = {input_val.z, input_val.w};
-            input_val[m_i] = input[k_idx + m_i * k_4];
+          input_val[m_i] = input[k_idx + (m_i + m_s) * k_4];
         }
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
@@ -335,7 +335,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
             low2     = low2 >> 4;
             // const half2 weight_val_1 = {static_cast<half>(high), static_cast<half>(low)};
 #pragma unroll
-            for (int m_i = m_s; m_i < m+m_s; m_i++) {
+            for (int m_i = 0; m_i < m; m_i++) {
                 // const half2 weight_val_2 =
                 //     __hadd2(__hmul2(input_val_0[m_i], weight_val_0), __hmul2(input_val_1[m_i], weight_val_1));
                 // sum_list[m_i].data[i] += static_cast<float>(weight_val_2.x + weight_val_2.y);
@@ -352,7 +352,7 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         }
     }
 #pragma unroll
-    for (int m_i = m_s; m_i < m+m_s; m_i++) {
+    for (int m_i = 0; m_i < m; m_i++) {
         cgBlockReduceSumElements<nPerThread>(sum_list[m_i].data, cgBlockReduceSumElements_shm);
         __syncthreads();
     }
@@ -360,13 +360,13 @@ __global__ void int4WeightPerChannelLdkMultiplication(
         using array_half       = struct ARRAY<nPerThread, half>;
         const array_half scale = *((const array_half*)scale_list + bidx);
 #pragma unroll
-        for (int m_i = m_s; m_i < m+m_s; m_i++) {
+        for (int m_i = 0; m_i < m; m_i++) {
             array_half sum_list_half;
 #pragma unroll
             for (int i = 0; i < nPerThread; i++) {
                 sum_list_half.data[i] = __float2half_rn(sum_list[m_i].data[i] * float(scale.data[i]));
             }
-            *((array_half*)output + bidx + m_i * gridDim.x) = sum_list_half;
+            *((array_half*)output + bidx + (m_i+m_s) * gridDim.x) = sum_list_half;
         }
     }
 }
@@ -429,7 +429,7 @@ void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
     {
       while (m_s < m){
         RUN4(8, half4, half);
-        m_s += m;
+        m_s += 8;
       }
 
         // printf("[ERROR][int4WeightPerChannelLdkMultiplicationLauncher] not support m == %d.\n", m);
