@@ -242,9 +242,25 @@ def convert_and_save_parameter(param_name: str,
         return
 
     axis = axis_to_split(param_name)
+
     split_params = np.split(param, tensor_para_size, axis=axis)
     for tp_idx, split_param in zip(range(tensor_para_size), split_params):
         save_path = save_dir / f'{param_name}.{tp_idx}.bin'
+
+        if "attention.query_key_value.weight" in param_name or 'attention.dense.weight' in param_name or 'mlp.dense_h_to_4h.weight' in param_name or 'mlp.dense_4h_to_h.weight' in param_name:
+            # weight = torch.from_numpy(split_param.reshape(split_param.shape[0], -1).T).to(f'cuda:{np.random.randint(8)}')
+            weight = torch.from_numpy(split_param.reshape(split_param.shape[0], -1).T).to(f'cuda:1')
+            scale = (weight.abs().max(dim=-1).values   / ((2 ** (4 - 1)))).half()
+            weight = torch.round(weight.float() / scale[:, None]).to(torch.int8)
+            from kernels import compress_int4_weight
+            weight = compress_int4_weight(weight.contiguous())
+
+            scale_save_path = str(save_path).replace('.weight', '.scale')
+            scale.cpu().numpy().tofile(Path(scale_save_path))
+            split_param = weight.cpu().numpy()
+            del weight
+            del scale
+
         split_param.tofile(save_path)
         logger.debug(
             f' - {param_name.ljust(48, ".")}: shape {str(split_param.shape):16s} s '
