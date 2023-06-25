@@ -318,7 +318,7 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
 
     POP_RANGE;
 
-    if (int8_mode_ != 1 || ia3_tasks != nullptr || use_gated_activation) {
+    if ((int8_mode_ != 1 && int8_mode_ != 4) || ia3_tasks != nullptr || use_gated_activation) {
         // if int8_mode == 1 && ia3_tasks == nullptr && we don't use gated activations, we use cutlass
         // to fuse GEMM + bias + activation, so we skip the activation function here. In all
         // other cases, we must apply the activation function separately.
