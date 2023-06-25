@@ -750,7 +750,6 @@ void ParallelGptDecoderLayerWeight<T>::mallocWeights()
             deviceMalloc(&weight_only_scale_ptr[1], hidden_units_);
             deviceMalloc(&weight_only_scale_ptr[2], inter_size_ / tensor_para_size_);
             deviceMalloc(&weight_only_scale_ptr[3], hidden_units_);
-            deviceMalloc(&weight_only_scale_ptr[4], 3 * hidden_units_ / tensor_para_size_);
 
             if (gpt_variant_params_.has_adapters) {
                 // Alloc scales for FFN adapters after attn and regular FFN.

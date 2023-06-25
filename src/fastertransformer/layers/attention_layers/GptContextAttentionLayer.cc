@@ -615,7 +615,6 @@ void GptContextAttentionLayer<T>::freeBuffer()
         allocator_->free((void**)(&qkv_buf_));
         allocator_->free((void**)(&q_buf_2_));
         allocator_->free((void**)(&qk_buf_));
-        // allocator_->free((void**)(&weights_buf_));
         allocator_->free((void**)(&qkv_buf_2_));
         allocator_->free((void**)(&qkv_buf_3_));
 
