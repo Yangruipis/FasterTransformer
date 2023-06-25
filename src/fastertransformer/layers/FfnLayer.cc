@@ -197,11 +197,62 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
     else {
         if (int8_mode_ == 1) {
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
+            FT_CHECK(ffn_weights->intermediate_weight.int8_kernel != NULL
+                     && ffn_weights->intermediate_weight.weight_only_quant_scale != NULL);
+
+            if (ia3_tasks == nullptr && !use_gated_activation) {
+                // launch fused GEMM + activation
+                weight_only_int8_fc_runner_->gemm_bias_act(
+                    input_tensor,
+                    reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight.int8_kernel),
+                    ffn_weights->intermediate_weight.weight_only_quant_scale,
+                    ffn_weights->intermediate_weight.bias,
+                    inter_buf_,
+                    m,
+                    inter_size_,
+                    hidden_units_,
+                    activation_type,
+                    mixed_gemm_workspace_,
+                    mixed_gemm_ws_bytes_,
+                    stream_);
+            }
+            else {
+                // Otherwise, let FT handle activation
+                weight_only_int8_fc_runner_->gemm(
+                    input_tensor,
+                    reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight.int8_kernel),
+                    ffn_weights->intermediate_weight.weight_only_quant_scale,
+                    inter_buf_,
+                    m,
+                    inter_size_,
+                    hidden_units_,
+                    mixed_gemm_workspace_,
+                    mixed_gemm_ws_bytes_,
+                    stream_);
+
+                if (use_gated_activation) {
+                    FT_CHECK(ffn_weights->intermediate_weight2.int8_kernel != NULL
+                             && ffn_weights->intermediate_weight2.weight_only_quant_scale != NULL);
+
+                    weight_only_int8_fc_runner_->gemm(
+                        input_tensor,
+                        reinterpret_cast<const uint8_t*>(ffn_weights->intermediate_weight2.int8_kernel),
+                        ffn_weights->intermediate_weight2.weight_only_quant_scale,
+                        inter_buf_2_,
+                        m,
+                        inter_size_,
+                        hidden_units_,
+                        mixed_gemm_workspace_,
+                        mixed_gemm_ws_bytes_,
+                        stream_);
+                }
+            }
+        }
+        else if (int8_mode_ == 4) {
             FT_CHECK(ffn_weights->intermediate_weight.int4_kernel != NULL
                      && ffn_weights->intermediate_weight.weight_only_quant_scale != NULL);
 
             if (ia3_tasks == nullptr && !use_gated_activation) {
-
                 int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
                                                               input_tensor,
                                                               ffn_weights->intermediate_weight.weight_only_quant_scale,
@@ -214,7 +265,6 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
                 invokeAddBiasGelu<T>(inter_buf_, ffn_weights->intermediate_weight.bias, m, inter_size_, stream_);
             }
             else {
-
                 int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
                                                               input_tensor,
                                                               ffn_weights->intermediate_weight.weight_only_quant_scale,
@@ -306,6 +356,21 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
     else {
         if (int8_mode_ == 1) {
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
+            FT_CHECK(ffn_weights->output_weight.int8_kernel != NULL
+                     && ffn_weights->output_weight.weight_only_quant_scale != NULL);
+
+            weight_only_int8_fc_runner_->gemm(inter_buf_,
+                                              reinterpret_cast<const uint8_t*>(ffn_weights->output_weight.int8_kernel),
+                                              ffn_weights->output_weight.weight_only_quant_scale,
+                                              output_tensor,
+                                              m,
+                                              hidden_units_,
+                                              inter_size_,
+                                              mixed_gemm_workspace_,
+                                              mixed_gemm_ws_bytes_,
+                                              stream_);
+        }
+        else if (int8_mode_ == 4) {
             FT_CHECK(ffn_weights->output_weight.int4_kernel != NULL
                      && ffn_weights->output_weight.weight_only_quant_scale != NULL);
 

@@ -530,7 +530,23 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
     }
     else {
         if (int8_mode_ == 1) {
-            FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
+            FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int8_kernel != NULL
+                     && attention_weights->query_weight.weight_only_quant_scale != NULL);
+
+            weight_only_int8_fc_runner_->gemm(
+                attention_input,
+                reinterpret_cast<const uint8_t*>(attention_weights->query_weight.int8_kernel),
+                attention_weights->query_weight.weight_only_quant_scale,
+                qkv_buf_,
+                batch_size,
+                3 * local_hidden_units_,
+                d_model_,
+                mixed_gemm_workspace_,
+                mixed_gemm_ws_bytes_,
+                stream_);
+        }
+        else if (int8_mode_ == 4) {
+            FT_CHECK(attention_weights->query_weight.int4_kernel != NULL
                      && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
             int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
@@ -631,7 +647,23 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
     else {
         if (int8_mode_ == 1) {
             FT_CHECK(weight_only_int8_fc_runner_.get() != NULL
-                     && attention_weights->attention_output_weight.int4_kernel != NULL
+                     && attention_weights->attention_output_weight.int8_kernel != NULL
+                     && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
+
+            weight_only_int8_fc_runner_->gemm(
+                context_buf_,
+                reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
+                attention_weights->attention_output_weight.weight_only_quant_scale,
+                attention_out,
+                batch_size,
+                d_model_,
+                local_hidden_units_,
+                mixed_gemm_workspace_,
+                mixed_gemm_ws_bytes_,
+                stream_);
+        }
+        else if (int8_mode_ == 4) {
+            FT_CHECK(attention_weights->attention_output_weight.int4_kernel != NULL
                      && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
             int4WeightPerChannelLdkMultiplicationLauncher(
@@ -643,7 +675,6 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
                 d_model_,
                 local_hidden_units_,
                 stream_);
-
         }
         else if (int8_mode_ == 2) {
             int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(context_buf_),
