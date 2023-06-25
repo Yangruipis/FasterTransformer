@@ -17,12 +17,11 @@
 
 #pragma once
 
-#include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
 #include "3rdparty/trt_fused_multihead_attention/qkvToContext.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/int8_gemm/int8_gemm.h"
+#include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
 #include "src/fastertransformer/layers/attention_layers/BaseAttentionLayer.h"
-#include "cutlass/numeric_types.h"
 
 namespace fastertransformer {
 
@@ -63,7 +62,6 @@ protected:
     using BaseAttentionLayer<T>::allocator_;
     using BaseAttentionLayer<T>::stream_;
     using BaseAttentionLayer<T>::sparse_;
-    T* weights_buf_ = nullptr;
     T*     qkv_buf_              = nullptr;
     T*     q_buf_2_              = nullptr;
     T*     k_buf_2_              = nullptr;

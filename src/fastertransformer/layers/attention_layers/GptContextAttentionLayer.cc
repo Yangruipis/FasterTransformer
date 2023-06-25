@@ -101,26 +101,6 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
         FT_CHECK(weight_only_int8_fc_runner_.get() != NULL && attention_weights->query_weight.int4_kernel != NULL
                  && attention_weights->query_weight.weight_only_quant_scale != NULL);
 
-            // invokeInt4WeightExtractionNoTrans2(attention_weights->query_weight.int4_kernel,
-            //                                   attention_weights->query_weight.weight_only_quant_scale,
-            //                                   weights_buf_,
-            //                                   3 * local_hidden_units_,
-            //                                   hidden_units_,
-            //                                   stream_);
-
-            // cublas_wrapper_->Gemm(CUBLAS_OP_T,
-            //                       CUBLAS_OP_N,
-            //                       3 * local_hidden_units_,  // n
-            //                       m,
-            //                       hidden_units_,  // k
-            //                       weights_buf_,
-            //                       // 3 * local_hidden_units_,  // n
-            //                       hidden_units_,
-            //                       attention_input,
-            //                       hidden_units_,  // k
-            //                       qkv_buf_,
-            //                       3 * local_hidden_units_ /* n */);
-
         int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
                                                       attention_input,
                                                       attention_weights->query_weight.weight_only_quant_scale,
@@ -129,7 +109,6 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
                                                       3 * local_hidden_units_,
                                                       hidden_units_,
                                                       stream_);
-
     }
     else if (int8_mode_ == 2) {
         cublas_wrapper_->Int8Gemm(3 * local_hidden_units_,
@@ -370,59 +349,15 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
                          && attention_weights->attention_output_weight.int4_kernel != NULL
                          && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
 
-                // invokeInt4WeightExtractionNoTrans2(attention_weights->attention_output_weight.int4_kernel,
-                //                                   attention_weights->attention_output_weight.weight_only_quant_scale,
-                //                                   weights_buf_,
-                //                                   hidden_units_,
-                //                                   local_hidden_units_,
-                //                                   stream_);
-                // sync_check_cuda_error();
-                // cublas_wrapper_->Gemm(CUBLAS_OP_T,
-                //                       CUBLAS_OP_N,
-                //                       hidden_units_,
-                //                       m,
-                //                       local_hidden_units_,
-                //                       weights_buf_,
-                //                       // hidden_units_,
-                //                       local_hidden_units_,
-                //                       qkv_buf_3_,
-                //                       local_hidden_units_,
-                //                       attention_out,
-                //                       hidden_units_);
-
-
-            int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->attention_output_weight.int4_kernel,
-                                                          qkv_buf_3_,
-                                                          attention_weights->attention_output_weight.weight_only_quant_scale,
-                                                          attention_out,
-                                                          m,
-                                                          hidden_units_,
-                                                          local_hidden_units_,
-                                                          stream_);
-
-                // cublas_wrapper_->Gemm(CUBLAS_OP_N,
-                //                       CUBLAS_OP_N,
-                //                       local_hidden_units_,  // n
-                //                       m,
-                //                       hidden_units_,  // k
-                //                       weights_buf_,
-                //                       local_hidden_units_,  // n
-                //                       attention_out,
-                //                       hidden_units_,  // k
-                //                       qkv_buf_,
-                //                       local_hidden_units_ /* n */);
-
-                // weight_only_int8_fc_runner_->gemm(
-                //     qkv_buf_3_,
-                //     reinterpret_cast<const uint8_t*>(attention_weights->attention_output_weight.int8_kernel),
-                //     attention_weights->attention_output_weight.weight_only_quant_scale,
-                //     attention_out,
-                //     m,
-                //     hidden_units_,
-                //     local_hidden_units_,
-                //     mixed_gemm_workspace_,
-                //     mixed_gemm_ws_bytes_,
-                //     stream_);
+                int4WeightPerChannelLdkMultiplicationLauncher(
+                    attention_weights->attention_output_weight.int4_kernel,
+                    qkv_buf_3_,
+                    attention_weights->attention_output_weight.weight_only_quant_scale,
+                    attention_out,
+                    m,
+                    hidden_units_,
+                    local_hidden_units_,
+                    stream_);
             }
             else if (int8_mode_ == 2) {
                 int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(qkv_buf_3_),
@@ -628,18 +563,15 @@ void GptContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
     if (int8_mode_ == 1) {
         // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
         // possible memory that would be required by any of the individual gemms.
-        // const int max_size    = std::max(hidden_units_, 3 * local_hidden_units_);
-        // mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
-        // mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
-
+        const int max_size    = std::max(hidden_units_, 3 * local_hidden_units_);
+        mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
+        mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
     }
     else if (int8_mode_ == 2) {
         const int max_size   = std::max(hidden_units_, 3 * local_hidden_units_);
         int8_gemm_ws_bytes_  = int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
         int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
     }
-
-    // weights_buf_ = reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * hidden_units_ * 3 * local_hidden_units_, false));
 
     is_allocate_buffer_ = true;
 }
@@ -660,11 +592,15 @@ void GptContextAttentionLayer<T>::freeBuffer()
             allocator_->free((void**)(&qk_buf_float_));
         }
 
-        // allocator_->free((void**)(&mixed_gemm_workspace_));
-        // mixed_gemm_ws_bytes_ = 0;
+        if (mixed_gemm_workspace_) {
+            allocator_->free((void**)(&mixed_gemm_workspace_));
+            mixed_gemm_ws_bytes_ = 0;
+        }
 
-        // allocator_->free((void**)(&int8_gemm_workspace_));
-        // int8_gemm_ws_bytes_ = 0;
+        if (int8_gemm_workspace_) {
+            allocator_->free((void**)(&int8_gemm_workspace_));
+            int8_gemm_ws_bytes_ = 0;
+        }
 
         is_allocate_buffer_ = false;
     }

@@ -201,74 +201,28 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
                      && ffn_weights->intermediate_weight.weight_only_quant_scale != NULL);
 
             if (ia3_tasks == nullptr && !use_gated_activation) {
-              // invokeInt4WeightExtractionNoTrans2(ffn_weights->intermediate_weight.int4_kernel,
-              //                                   ffn_weights->intermediate_weight.weight_only_quant_scale,
-              //                                   weights_buf_,
-              //                                   inter_size_,
-              //                                   hidden_units_,
-              //                                   stream_);
 
-              // cublas_wrapper_->Gemm(CUBLAS_OP_T,
-              //                       CUBLAS_OP_N,
-              //                       inter_size_,
-              //                       m,
-              //                       hidden_units_,
-              //                       weights_buf_,
-              //                       // inter_size_,
-              //                       hidden_units_,
-              //                       input_tensor,
-              //                       hidden_units_,
-              //                       inter_buf_,
-              //                       inter_size_);
+                int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
+                                                              input_tensor,
+                                                              ffn_weights->intermediate_weight.weight_only_quant_scale,
+                                                              inter_buf_,
+                                                              m,
+                                                              inter_size_,
+                                                              hidden_units_,
+                                                              stream_);
 
-              int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
-                                                            input_tensor,
-                                                            ffn_weights->intermediate_weight.weight_only_quant_scale,
-                                                            inter_buf_,
-                                                            m,
-                                                            inter_size_,
-                                                            hidden_units_,
-                                                            stream_);
-
-              // invokeInt4WeightExtractionNoTrans(ffn_weights->intermediate_weight.int4_kernel,
-              //                                   ffn_weights->intermediate_weight.weight_only_quant_scale,
-              //                                   weights_buf_,
-              //                                   inter_size_,
-              //                                   hidden_units_,
-              //                                   stream_);
-
-              invokeAddBiasGelu<T>(inter_buf_, ffn_weights->intermediate_weight.bias, m, inter_size_, stream_);
-
+                invokeAddBiasGelu<T>(inter_buf_, ffn_weights->intermediate_weight.bias, m, inter_size_, stream_);
             }
             else {
-              // invokeInt4WeightExtractionNoTrans(ffn_weights->intermediate_weight.int4_kernel,
-              //                                   ffn_weights->intermediate_weight.weight_only_quant_scale,
-              //                                   weights_buf_,
-              //                                   inter_size_,
-              //                                   hidden_units_,
-              //                                   stream_);
 
-              // cublas_wrapper_->Gemm(CUBLAS_OP_N,
-              //                       CUBLAS_OP_N,
-              //                       inter_size_,
-              //                       m,
-              //                       hidden_units_,
-              //                       weights_buf_,
-              //                       inter_size_,
-              //                       input_tensor,
-              //                       hidden_units_,
-              //                       inter_buf_,
-              //                       inter_size_);
-
-              int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
-                                                            input_tensor,
-                                                            ffn_weights->intermediate_weight.weight_only_quant_scale,
-                                                            inter_buf_,
-                                                            m,
-                                                            inter_size_,
-                                                            hidden_units_,
-                                                            stream_);
-
+                int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int4_kernel,
+                                                              input_tensor,
+                                                              ffn_weights->intermediate_weight.weight_only_quant_scale,
+                                                              inter_buf_,
+                                                              m,
+                                                              inter_size_,
+                                                              hidden_units_,
+                                                              stream_);
             }
         }
         else if (int8_mode_ == 2) {
@@ -355,26 +309,6 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
             FT_CHECK(ffn_weights->output_weight.int4_kernel != NULL
                      && ffn_weights->output_weight.weight_only_quant_scale != NULL);
 
-            // invokeInt4WeightExtractionNoTrans2(ffn_weights->output_weight.int4_kernel,
-            //                                   ffn_weights->output_weight.weight_only_quant_scale,
-            //                                   weights_buf_,
-            //                                   hidden_units_,
-            //                                   inter_size_,
-            //                                   stream_);
-
-            // cublas_wrapper_->Gemm(CUBLAS_OP_T,
-            //                       CUBLAS_OP_N,
-            //                       hidden_units_,
-            //                       m,
-            //                       inter_size_,
-            //                       weights_buf_,
-            //                       // hidden_units_,
-            //                       inter_size_,
-            //                       inter_buf_,
-            //                       inter_size_,
-            //                       output_tensor,
-            //                       hidden_units_);
-
             int4WeightPerChannelLdkMultiplicationLauncher(ffn_weights->output_weight.int4_kernel,
                                                           inter_buf_,
                                                           ffn_weights->output_weight.weight_only_quant_scale,
@@ -383,7 +317,6 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
                                                           hidden_units_,
                                                           inter_size_,
                                                           stream_);
-
         }
         else if (int8_mode_ == 2) {
             int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(inter_buf_),
@@ -531,16 +464,15 @@ void FfnLayer<T>::allocateBuffer(size_t token_num, int moe_k, bool use_moe)
             FT_CHECK_WITH_INFO(weight_only_int8_fc_runner_.get() != NULL, "weight only runner was not initialized.");
             // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
             // possible memory that would be required by any of the individual gemms.
-            // const int max_size    = std::max(hidden_units_, inter_size_);
-            // mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
-            // mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
+            const int max_size    = std::max(hidden_units_, inter_size_);
+            mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
+            mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
         }
         else if (int8_mode_ == 2) {
             const int max_size   = std::max(hidden_units_, inter_size_);
             int8_gemm_ws_bytes_  = int8_fc_runner_->getWorkspaceSize(token_num, max_size, max_size);
             int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
         }
-        // weights_buf_ = (T*)allocator_->reMalloc(weights_buf_, sizeof(T) * hidden_units_ * inter_size_, false);
     }
 
     is_allocate_buffer_ = true;
@@ -552,7 +484,6 @@ void FfnLayer<T>::freeBuffer()
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     if (is_allocate_buffer_) {
         allocator_->free((void**)(&inter_buf_));
-        // allocator_->free((void**)(&weights_buf_));
         if (use_gated_activation_) {
             allocator_->free((void**)(&inter_buf_2_));
         }
@@ -561,10 +492,10 @@ void FfnLayer<T>::freeBuffer()
             allocator_->free((void**)(&moe_fc_workspace_));
         }
 
-        // if (mixed_gemm_workspace_) {
-        //     allocator_->free((void**)(&mixed_gemm_workspace_));
-        //     mixed_gemm_ws_bytes_ = 0;
-        // }
+        if (mixed_gemm_workspace_) {
+            allocator_->free((void**)(&mixed_gemm_workspace_));
+            mixed_gemm_ws_bytes_ = 0;
+        }
 
         is_allocate_buffer_ = false;
     }
