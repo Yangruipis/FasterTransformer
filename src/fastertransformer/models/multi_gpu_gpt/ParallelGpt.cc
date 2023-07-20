@@ -820,6 +820,12 @@ void ParallelGpt<T>::forward(std::unordered_map<std::string, Tensor>*       outp
     if (gpt_variant_params_.use_attention_linear_bias) {
         PUSH_RANGE("build alibi slopes");
         invokeBuildAlibiSlopes(linear_bias_slopes_, head_num_, stream_);
+
+        const int alibi_scale = input_tensors->getVal<T>("alibi_scale", (T)1.0);
+        for (int i = 0; i < head_num_; ++i) {
+            linear_bias_slopes_[i] = linear_bias_slopes_[i] * alibi_scale;
+        }
+
         POP_RANGE;
     }
 
