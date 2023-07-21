@@ -821,9 +821,13 @@ void ParallelGpt<T>::forward(std::unordered_map<std::string, Tensor>*       outp
         PUSH_RANGE("build alibi slopes");
         invokeBuildAlibiSlopes(linear_bias_slopes_, head_num_, stream_);
 
-        const int alibi_scale = input_tensors->getVal<T>("alibi_scale", (T)1.0);
-        for (int i = 0; i < head_num_; ++i) {
-            linear_bias_slopes_[i] = linear_bias_slopes_[i] * alibi_scale;
+        const T alibi_scale = input_tensors->at("alibi_scale")->getVal<T>();
+        const int max_pos_length = input_tensors->at("max_pos_length")->getVal<int>();
+
+        if (max_input_length > max_pos_length) {
+            for (int i = 0; i < head_num_; ++i) {
+                linear_bias_slopes_[i] = linear_bias_slopes_[i] / alibi_scale;
+            }
         }
 
         POP_RANGE;
