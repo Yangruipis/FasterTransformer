@@ -209,7 +209,7 @@ __host__ __device__ uint32_t pow2_rounddown(uint32_t x)
 }
 
 template<typename T>
-__global__ void generate_alibi_slopes(T* alibi_slopes, const size_t num_heads)
+__global__ void generate_alibi_slopes(T* alibi_slopes, const size_t num_heads, const float scale)
 {
     if (threadIdx.x < num_heads) {
         // The nearest power of 2 greater than num_heads followed by HF's implementation.
@@ -217,18 +217,18 @@ __global__ void generate_alibi_slopes(T* alibi_slopes, const size_t num_heads)
         // Loop over the attention head.
         for (int h = threadIdx.x; h < num_heads; h += blockDim.x) {
             if (h < num_heads_pow2) {
-                alibi_slopes[h] = static_cast<T>(powf(powf(0.5f, powf(0.5f, log2f(num_heads_pow2) - 3.f)), h + 1));
+                alibi_slopes[h] = static_cast<T>(powf(powf(0.5f, powf(0.5f, log2f(num_heads_pow2) - 3.f)), h + 1) / scale);
             }
             else {
                 alibi_slopes[h] = static_cast<T>(
-                    powf(powf(0.5f, powf(0.5f, log2f(num_heads_pow2 << 1) - 3.f)), (h - num_heads_pow2) * 2 + 1));
+                    powf(powf(0.5f, powf(0.5f, log2f(num_heads_pow2 << 1) - 3.f)), (h - num_heads_pow2) * 2 + 1) / scale);
             }
         }
     }
 }
 
 template<typename T>
-void invokeBuildAlibiSlopes(T* alibi_slopes, const size_t num_heads, cudaStream_t stream)
+void invokeBuildAlibiSlopes(T* alibi_slopes, const size_t num_heads, const float scale, cudaStream_t stream)
 {
     // Generate the slopes of a linear attention linear bias.
     //
@@ -245,13 +245,13 @@ void invokeBuildAlibiSlopes(T* alibi_slopes, const size_t num_heads, cudaStream_
     // stream: a cuda stream.
 
     dim3 block(min((int)num_heads, 512));
-    generate_alibi_slopes<<<1, block, 0, stream>>>(alibi_slopes, num_heads);
+    generate_alibi_slopes<<<1, block, 0, stream>>>(alibi_slopes, num_heads, scale);
 }
 
-template void invokeBuildAlibiSlopes(float* alibi_slopes, const size_t num_heads, cudaStream_t stream);
-template void invokeBuildAlibiSlopes(half* alibi_slopes, const size_t num_heads, cudaStream_t stream);
+template void invokeBuildAlibiSlopes(float* alibi_slopes, const size_t num_heads, const float scale, cudaStream_t stream);
+template void invokeBuildAlibiSlopes(half* alibi_slopes, const size_t num_heads, const float scale, cudaStream_t stream);
 #ifdef ENABLE_BF16
-template void invokeBuildAlibiSlopes(__nv_bfloat16* alibi_slopes, const size_t num_heads, cudaStream_t stream);
+template void invokeBuildAlibiSlopes(__nv_bfloat16* alibi_slopes, const size_t num_heads, const float scale, cudaStream_t stream);
 #endif
 
 template void invokeGenRelativePosBiasV2(float*       relative_position_bias,

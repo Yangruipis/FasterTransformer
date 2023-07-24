@@ -38,7 +38,7 @@ void invokeGenRelativePosBias(T*            relative_position_bias,
                               cudaStream_t  stream);
 
 template<typename T>
-void invokeBuildAlibiSlopes(T* linear_position_bias_slopes, const size_t head_num, cudaStream_t stream);
+void invokeBuildAlibiSlopes(T* linear_position_bias_slopes, const size_t head_num, const float scale, cudaStream_t stream);
 
 template<typename T, typename Tindex>
 void invokeGenRelativePosBiasV2(T*            relative_position_bias,
