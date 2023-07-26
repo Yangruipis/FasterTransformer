@@ -351,7 +351,7 @@ public:
         else {
             utils::normal<T>(curng, qk);
         }
-        invokeBuildAlibiSlopes(alibi_slopes.getPtr<T>(), param.head_num, stream);
+        invokeBuildAlibiSlopes(alibi_slopes.getPtr<T>(), param.head_num, 1.f, stream);
         sync_check_cuda_error();
 
         Tensor h_alibi_slopes = createTensor(MEMORY_CPU, dtype, {param.head_num});
