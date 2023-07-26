@@ -1593,9 +1593,6 @@ void ParallelGpt<T>::forward(std::unordered_map<std::string, Tensor>*       outp
 
         POP_RANGE;
 
-        if (*generation_should_stop_) {
-            break;
-        }
     }
     PUSH_RANGE("communicate tensors");
     setOutputTensors(
