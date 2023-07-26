@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2023, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2019-2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(gpt_example gpt_example.cc)
-add_executable(quant_example quant.cc)
-target_link_libraries(gpt_example PUBLIC -lcublas -lcublasLt -lcudart ParallelGpt nvtx_utils cutlass_preprocessors)
-target_link_libraries(quant_example PUBLIC -lcublas -lcublasLt -lcudart ParallelGpt nvtx_utils cutlass_preprocessors)
+add_library(th_gptneox STATIC GptNeoXOp.cc)
+set_property(TARGET th_gptneox PROPERTY POSITION_INDEPENDENT_CODE  ON)
+target_link_libraries(th_gptneox PRIVATE "${TORCH_LIBRARIES}" GptNeoX th_utils nccl_utils)

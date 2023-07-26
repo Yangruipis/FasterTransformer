@@ -545,6 +545,19 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
                 mixed_gemm_ws_bytes_,
                 stream_);
         }
+        else if (int8_mode_ == 4) {
+            FT_CHECK(attention_weights->query_weight.int4_kernel != NULL
+                     && attention_weights->query_weight.weight_only_quant_scale != NULL);
+
+            int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
+                                                          attention_input,
+                                                          attention_weights->query_weight.weight_only_quant_scale,
+                                                          qkv_buf_,
+                                                          batch_size,
+                                                          3 * local_hidden_units_,
+                                                          d_model_,
+                                                          stream_);
+        }
         else if (int8_mode_ == 2) {
             // Here, we set per_column_scaling to be true because q, k, v may
             // use different scales. So, we pass a pointer with shape [3, local_hidden_units_] like
@@ -647,6 +660,20 @@ void DecoderSelfAttentionLayer<T>::forward(TensorMap*                output_tens
                 local_hidden_units_,
                 mixed_gemm_workspace_,
                 mixed_gemm_ws_bytes_,
+                stream_);
+        }
+        else if (int8_mode_ == 4) {
+            FT_CHECK(attention_weights->attention_output_weight.int4_kernel != NULL
+                     && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
+
+            int4WeightPerChannelLdkMultiplicationLauncher(
+                attention_weights->attention_output_weight.int4_kernel,
+                context_buf_,
+                attention_weights->attention_output_weight.weight_only_quant_scale,
+                attention_out,
+                batch_size,
+                d_model_,
+                local_hidden_units_,
                 stream_);
         }
         else if (int8_mode_ == 2) {

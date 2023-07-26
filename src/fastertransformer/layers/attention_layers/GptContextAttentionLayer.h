@@ -20,6 +20,7 @@
 #include "3rdparty/trt_fused_multihead_attention/qkvToContext.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "src/fastertransformer/kernels/cutlass_kernels/int8_gemm/int8_gemm.h"
+#include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
 #include "src/fastertransformer/layers/attention_layers/BaseAttentionLayer.h"
 
 namespace fastertransformer {

@@ -26,6 +26,8 @@ int get_bits_in_quant_type(QuantType quant_type)
     switch (quant_type) {
         case QuantType::INT8_WEIGHT_ONLY:
             return 8;
+        case QuantType::INT8_WEIGHT_ONLY2:
+            return 8;
         case QuantType::PACKED_INT4_WEIGHT_ONLY:
             return 4;
         default:
@@ -103,6 +105,9 @@ LayoutDetails getLayoutDetailsForArch(QuantType quant_type)
     if (quant_type == QuantType::INT8_WEIGHT_ONLY) {
         details = getLayoutDetailsForArchAndQuantType<cutlassArch, uint8_t>();
     }
+    else if (quant_type == QuantType::INT8_WEIGHT_ONLY2) {
+        details = getLayoutDetailsForArchAndQuantType<cutlassArch, uint8_t>();
+    }
     else if (quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY) {
         details = getLayoutDetailsForArchAndQuantType<cutlassArch, cutlass::uint4b_t>();
     }
@@ -144,7 +149,7 @@ void permute_B_rows_for_mixed_gemm(int8_t*                    permuted_quantized
 {
 
     // We only want to run this step for weight only quant.
-    FT_CHECK(quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY);
+    // FT_CHECK(quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY);
 
     FT_CHECK_WITH_INFO(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
     const size_t num_experts = shape.size() == 2 ? 1 : shape[0];
@@ -442,7 +447,7 @@ void interleave_column_major_tensor(int8_t*                    interleaved_quant
 {
 
     // We only want to run this step for weight only quant.
-    FT_CHECK(quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY);
+    // FT_CHECK(quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY);
 
     FT_CHECK_WITH_INFO(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
     const size_t num_experts = shape.size() == 2 ? 1 : shape[0];
@@ -516,6 +521,13 @@ void preprocess_weights_for_mixed_gemm(int8_t*                    preprocessed_q
     std::vector<int8_t> src_buf(num_bytes);
     std::vector<int8_t> dst_buf(num_bytes);
     std::copy(row_major_quantized_weight, row_major_quantized_weight + num_bytes, src_buf.begin());
+
+
+    if (quant_type == QuantType::INT8_WEIGHT_ONLY2 || quant_type == QuantType::PACKED_INT4_WEIGHT_ONLY) {
+      std::copy(src_buf.begin(), src_buf.end(), preprocessed_quantized_weight);
+      return;
+    }
+
 
     // Works on row major data, so issue this permutation first.
     if (details.uses_imma_ldsm) {
@@ -635,7 +647,7 @@ void symmetric_quantize(int8_t*                    processed_quantized_weight,
             const WeightType* current_weight_row           = current_weight + ii * num_cols;
             for (int jj = 0; jj < bytes_per_out_col; ++jj) {
 
-                if (quant_type == QuantType::INT8_WEIGHT_ONLY) {
+                if (quant_type == QuantType::INT8_WEIGHT_ONLY || quant_type == QuantType::INT8_WEIGHT_ONLY2) {
                     const float  col_scale           = per_col_max[jj];
                     const float  weight_elt          = float(current_weight_row[jj]);
                     const float  scaled_weight       = round(weight_elt / col_scale);
