@@ -97,6 +97,7 @@ protected:
     std::vector<T*> weights_ptr = std::vector<T*>(20, nullptr);
 
     std::vector<int8_t*> int8_weights_ptr      = std::vector<int8_t*>(8, nullptr);
+    std::vector<int8_t*> int4_weights_ptr      = std::vector<int8_t*>(8, nullptr);
     std::vector<T*>      weight_only_scale_ptr = std::vector<T*>(8, nullptr);
 
     std::vector<float*> scale_ptr       = std::vector<float*>(8, nullptr);

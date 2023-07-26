@@ -418,7 +418,6 @@ void ParallelGptDecoder<T>::forward(std::unordered_map<std::string, Tensor>*    
             TensorMap ffn_output_tensors(
                 {{"ffn_output",
                   Tensor{MEMORY_GPU, data_type, {local_batch_size, hidden_units_}, after_adapter_attn_output_}}});
-
             ffn_layer_->resetInterSize(adapter_inter_size_ / tensor_para_.world_size_);
             ffn_layer_->forward(
                 &ffn_output_tensors, &ffn_input_tensors, &layer_weight->after_attention_adapter_weights);
@@ -497,7 +496,6 @@ void ParallelGptDecoder<T>::forward(std::unordered_map<std::string, Tensor>*    
                 "expert_for_source_row",
                 Tensor{MEMORY_GPU, TYPE_INT32, {local_batch_size, moe_k_}, expert_for_source_row_});
         }
-
         ffn_layer_->resetInterSize(inter_size_ / tensor_para_.world_size_);
         ffn_layer_->forward(&ffn_output_tensors, &ffn_input_tensors, &layer_weight->ffn_weights);
 

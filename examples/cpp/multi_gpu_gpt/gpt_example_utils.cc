@@ -458,7 +458,7 @@ void write_output_tensors(std::unordered_map<std::string, Tensor>& output_tensor
             if (h_buf[i] == 0) {
                 zeroCount++;
             }
-            out_file << h_buf[i] << " ";
+            out_file << h_buf[i] << ", ";
             if ((i + 1) % (total_output_len) == 0) {
                 out_file << std::endl;
             }

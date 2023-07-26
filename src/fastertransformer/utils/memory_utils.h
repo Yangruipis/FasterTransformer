@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "src/fastertransformer/kernels/cutlass_kernels/cutlass_preprocessors.h"
 #include "src/fastertransformer/utils/Tensor.h"
 #include "src/fastertransformer/utils/cuda_fp8_utils.h"
 #include "src/fastertransformer/utils/cuda_utils.h"
@@ -60,7 +61,8 @@ int loadWeightFromBinAndQuantizeForWeightOnly(int8_t*             quantized_weig
                                               T*                  scale_ptr,
                                               std::vector<size_t> shape,
                                               std::string         filename,
-                                              FtCudaDataType      model_file_type = FtCudaDataType::FP32);
+                                              FtCudaDataType      model_file_type = FtCudaDataType::FP32,
+                                              QuantType           quant_type      = QuantType::INT8_WEIGHT_ONLY);
 
 void invokeCudaD2DcpyHalf2Float(float* dst, half* src, const size_t size, cudaStream_t stream);
 void invokeCudaD2DcpyFloat2Half(half* dst, float* src, const size_t size, cudaStream_t stream);

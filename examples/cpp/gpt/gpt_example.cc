@@ -185,10 +185,19 @@ void gpt_example(const INIReader reader)
         FT_LOG_WARNING("context_log_probs will be ignored since return_log_probs is disabled.");
     }
 
-    const int start_id = 50256;
-    const int end_id   = 50256;
+    const int start_id = 1;
+    const int end_id   = 2;
 
     const int rank = 0;
+
+    gptVariantParams variants;
+    variants.layernorm_eps              = 1e-5f;
+    variants.layernorm_type             = LayerNormType::pre_layernorm;
+    variants.activation_type            = ActivationType::Gelu;
+    variants.has_positional_encoding    = false;
+    variants.has_pre_decoder_layernorm  = true;
+    variants.has_post_decoder_layernorm = true;
+    variants.use_attention_linear_bias  = true;
 
     // Read ids of request from file.
     int              max_input_len = -1;
@@ -257,7 +266,9 @@ void gpt_example(const INIReader reader)
     struct cudaDeviceProp prop;
     check_cuda_error(cudaGetDeviceProperties(&prop, 0));
 
-    ParallelGptWeight<T> gpt_weights(hidden_units, inter_size, vocab_size, decoder_layers, max_seq_len, 1, 0, 1, 0, 0);
+    ParallelGptWeight<T> gpt_weights(
+                                     hidden_units, inter_size, vocab_size, decoder_layers, max_seq_len, 1, 0, 1, 0, 1,
+                                     PromptLearningType::no_prompt, {}, variants);
 
     gpt_weights.loadModel(model_dir);
 
@@ -297,7 +308,7 @@ void gpt_example(const INIReader reader)
                                         end_id,
                                         end_id + 1,  // p_prompt_tuning token start id
                                         PromptLearningType::no_prompt,
-                                        gptVariantParams{},
+                                        variants,
                                         0.0f,  // beam_search_diversity_rate,
                                         0,     // top_k,
                                         0.0,   // top_p,
@@ -314,7 +325,7 @@ void gpt_example(const INIReader reader)
                                         &prop,
                                         attention_type,
                                         sparse,
-                                        0,
+                                        1,
                                         nullptr,
                                         0,
                                         shared_contexts_ratio);
@@ -447,7 +458,7 @@ void gpt_example(const INIReader reader)
                     if (hBuf[i] == int(0)) {
                         zeroCount++;
                     }
-                    outFile << hBuf[i] << " ";
+                    outFile << hBuf[i] << ", ";
                     if ((i + 1) % (total_output_len) == 0) {
                         outFile << std::endl;
                     }

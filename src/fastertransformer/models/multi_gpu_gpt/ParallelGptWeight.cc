@@ -73,6 +73,7 @@ ParallelGptWeight<T>::ParallelGptWeight(const int                               
     }
 
     mallocWeights();
+
     setWeightPtr();
 }
 
@@ -135,7 +136,7 @@ ParallelGptWeight<T>::ParallelGptWeight(const ParallelGptWeight& other):
         cudaD2Dcpy(weights_ptr[4], other.weights_ptr[4], hidden_units_);
         cudaD2Dcpy(weights_ptr[5], other.weights_ptr[5], hidden_units_);
     }
-    cudaD2Dcpy(weights_ptr[6], other.weights_ptr[6], hidden_units_ * vocab_size_);
+    // cudaD2Dcpy(weights_ptr[6], other.weights_ptr[6], hidden_units_ * vocab_size_);
 
     // prompt learning table: malloc weights and set weight ptr
     if (malloc_load_prompt_weights_) {
@@ -192,7 +193,7 @@ ParallelGptWeight<T>& ParallelGptWeight<T>::operator=(const ParallelGptWeight& o
         cudaD2Dcpy(weights_ptr[4], other.weights_ptr[4], hidden_units_);
         cudaD2Dcpy(weights_ptr[5], other.weights_ptr[5], hidden_units_);
     }
-    cudaD2Dcpy(weights_ptr[6], other.weights_ptr[6], hidden_units_ * vocab_size_);
+    // cudaD2Dcpy(weights_ptr[6], other.weights_ptr[6], hidden_units_ * vocab_size_);
 
     // prompt learning tables: malloc weights and set weight ptr
     if (malloc_load_prompt_weights_) {
@@ -227,14 +228,15 @@ void ParallelGptWeight<T>::setWeightPtr()
     pre_decoder_layernorm.beta   = gpt_variant_params_.has_pre_decoder_layernorm ? weights_ptr[3] : nullptr;
     post_decoder_layernorm.beta  = gpt_variant_params_.has_post_decoder_layernorm ? weights_ptr[4] : nullptr;
     post_decoder_layernorm.gamma = gpt_variant_params_.has_post_decoder_layernorm ? weights_ptr[5] : nullptr;
-    if (shared_embed_ && weights_ptr[6] != weights_ptr[1]) {
-        deviceFree(weights_ptr[6]);
-        weights_ptr[6]                = nullptr;
-        post_decoder_embedding.kernel = weights_ptr[1];
-    }
-    else {
-        post_decoder_embedding.kernel = weights_ptr[6];
-    }
+    // if (shared_embed_ && weights_ptr[6] != weights_ptr[1]) {
+    //     deviceFree(weights_ptr[6]);
+    //     weights_ptr[6]                = nullptr;
+    //     post_decoder_embedding.kernel = weights_ptr[1];
+    // }
+    // else {
+    //     post_decoder_embedding.kernel = weights_ptr[6];
+    // }
+    post_decoder_embedding.kernel = weights_ptr[1];
     post_decoder_embedding.bias = nullptr;
 
     // prompt learning tables: set weight ptr
@@ -271,7 +273,7 @@ void ParallelGptWeight<T>::mallocWeights()
         deviceMalloc(&weights_ptr[5], hidden_units_);
     }
     // deceder embedding table.
-    deviceMalloc(&weights_ptr[6], hidden_units_ * vocab_size_);
+    // deviceMalloc(&weights_ptr[6], hidden_units_ * vocab_size_);
 
     // prompt learning tables: malloc weights
     if (malloc_load_prompt_weights_) {
@@ -311,16 +313,16 @@ void ParallelGptWeight<T>::loadModel(std::string dir_path)
         loadWeightFromBin<T>(
             weights_ptr[5], {hidden_units_}, dir_path + "/model.final_layernorm.weight.bin", model_file_type);
     }
-    if (checkIfFileExist(dir_path + "/model.lm_head.weight.bin")) {
-        shared_embed_ = false;
-        loadWeightFromBin<T>(
-            weights_ptr[6], {vocab_size_ * hidden_units_}, dir_path + "/model.lm_head.weight.bin", model_file_type);
-    }
-    else {
-        shared_embed_ = true;
-        loadWeightFromBin<T>(
-            weights_ptr[6], {vocab_size_ * hidden_units_}, dir_path + "/model.wte.bin", model_file_type);
-    }
+    // if (checkIfFileExist(dir_path + "/model.lm_head.weight.bin")) {
+    //     shared_embed_ = false;
+    //     loadWeightFromBin<T>(
+    //         weights_ptr[6], {vocab_size_ * hidden_units_}, dir_path + "/model.lm_head.weight.bin", model_file_type);
+    // }
+    // else {
+    //     shared_embed_ = true;
+    //     loadWeightFromBin<T>(
+    //         weights_ptr[6], {vocab_size_ * hidden_units_}, dir_path + "/model.wte.bin", model_file_type);
+    // }
 
     // prompt table: load weights from bin
     if (malloc_load_prompt_weights_) {

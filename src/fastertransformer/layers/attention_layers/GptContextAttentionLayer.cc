@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "src/fastertransformer/layers/attention_layers/GptContextAttentionLayer.h"
 #include "src/fastertransformer/kernels/unfused_attention_kernels.h"
 #include "src/fastertransformer/utils/nvtx_utils.h"
@@ -112,6 +111,19 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
                                           mixed_gemm_workspace_,
                                           mixed_gemm_ws_bytes_,
                                           stream_);
+    }
+    else if (int8_mode_ == 4) {
+        FT_CHECK(attention_weights->query_weight.int4_kernel != NULL
+                 && attention_weights->query_weight.weight_only_quant_scale != NULL);
+
+        int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int4_kernel,
+                                                      attention_input,
+                                                      attention_weights->query_weight.weight_only_quant_scale,
+                                                      qkv_buf_,
+                                                      m,
+                                                      3 * local_hidden_units_,
+                                                      hidden_units_,
+                                                      stream_);
     }
     else if (int8_mode_ == 2) {
         cublas_wrapper_->Int8Gemm(3 * local_hidden_units_,
@@ -364,6 +376,20 @@ void GptContextAttentionLayer<T>::forward(TensorMap*                output_tenso
                     mixed_gemm_ws_bytes_,
                     stream_);
             }
+            else if (int8_mode_ == 4) {
+                FT_CHECK(attention_weights->attention_output_weight.int4_kernel != NULL
+                         && attention_weights->attention_output_weight.weight_only_quant_scale != NULL);
+
+                int4WeightPerChannelLdkMultiplicationLauncher(
+                    attention_weights->attention_output_weight.int4_kernel,
+                    qkv_buf_3_,
+                    attention_weights->attention_output_weight.weight_only_quant_scale,
+                    attention_out,
+                    m,
+                    hidden_units_,
+                    local_hidden_units_,
+                    stream_);
+            }
             else if (int8_mode_ == 2) {
                 int8_fc_runner_->gemm(reinterpret_cast<int8_t*>(qkv_buf_3_),
                                       attention_weights->attention_output_weight.int8_kernel,
@@ -572,19 +598,12 @@ void GptContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
         mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
         mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
     }
-
-    if (int8_mode_ == 1) {
-        // We use max_size for n and k since we reuse buffers for both FCs and want to allocate the max
-        // possible memory that would be required by any of the individual gemms.
-        const int max_size    = std::max(hidden_units_, 3 * local_hidden_units_);
-        mixed_gemm_ws_bytes_  = weight_only_int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
-        mixed_gemm_workspace_ = (char*)allocator_->reMalloc(mixed_gemm_workspace_, mixed_gemm_ws_bytes_, false);
-    }
     else if (int8_mode_ == 2) {
         const int max_size   = std::max(hidden_units_, 3 * local_hidden_units_);
         int8_gemm_ws_bytes_  = int8_fc_runner_->getWorkspaceSize(batch_size * seq_len, max_size, max_size);
         int8_gemm_workspace_ = (char*)allocator_->reMalloc(int8_gemm_workspace_, int8_gemm_ws_bytes_, false);
     }
+
     is_allocate_buffer_ = true;
 }
 
@@ -603,11 +622,15 @@ void GptContextAttentionLayer<T>::freeBuffer()
             allocator_->free((void**)(&qk_buf_float_));
         }
 
-        allocator_->free((void**)(&mixed_gemm_workspace_));
-        mixed_gemm_ws_bytes_ = 0;
+        if (mixed_gemm_workspace_) {
+            allocator_->free((void**)(&mixed_gemm_workspace_));
+            mixed_gemm_ws_bytes_ = 0;
+        }
 
-        allocator_->free((void**)(&int8_gemm_workspace_));
-        int8_gemm_ws_bytes_ = 0;
+        if (int8_gemm_workspace_) {
+            allocator_->free((void**)(&int8_gemm_workspace_));
+            int8_gemm_ws_bytes_ = 0;
+        }
 
         is_allocate_buffer_ = false;
     }
